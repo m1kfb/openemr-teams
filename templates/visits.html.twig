@@ -1,0 +1,162 @@
+<div class="print-only mb-3">
+    <h1>{{ 'Staff Log and Patient Visit Matrix'|xlt }}</h1>
+    {% if team %}<h2>{{ team.name|text }}</h2>{% endif %}
+    <p class="purpose">{{ 'This matrix provides a structured, audit-ready record of staff attendance and patient visits. It supports compliance with CQC and Care Certificate standards, ensuring transparency, accountability, and continuity of care.'|xlt }}</p>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h2 class="mb-0">{{ 'Visit dashboard'|xlt }}</h2>
+    <a class="btn btn-outline-secondary" href="teams.php{% if team %}?team_id={{ team.id|attr }}{% endif %}">{{ 'Teams'|xlt }}</a>
+</div>
+
+{% if notice %}
+    <div class="alert alert-success no-print">{{ notice|text }}</div>
+{% endif %}
+{% for error in errors %}
+    <div class="alert alert-danger no-print">{{ error|text }}</div>
+{% endfor %}
+
+<form method="get" class="card mb-3 no-print">
+    <div class="card-body">
+        <div class="form-row">
+            <div class="form-group col-md-4">
+                <label for="team_id">{{ 'Team'|xlt }}</label>
+                <select class="form-control" id="team_id" name="team_id" required>
+                    <option value="">{{ 'Choose a team'|xlt }}</option>
+                    {% for item in teams %}
+                        <option value="{{ item.id|attr }}" {% if team and team.id == item.id %}selected{% endif %}>
+                            {{ item.name|text }}{% if item.active != 1 %} ({{ 'inactive'|xlt }}){% endif %}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group col-md-3">
+                <label for="mode">{{ 'View'|xlt }}</label>
+                <select class="form-control" id="mode" name="mode">
+                    <option value="day" {% if mode == 'day' %}selected{% endif %}>{{ 'Record a day'|xlt }}</option>
+                    <option value="range" {% if mode == 'range' %}selected{% endif %}>{{ 'Audit a date range'|xlt }}</option>
+                </select>
+            </div>
+            {% if mode == 'day' %}
+                <div class="form-group col-md-3">
+                    <label for="date">{{ 'Date'|xlt }}</label>
+                    <input class="form-control" id="date" type="date" name="date" value="{{ date|attr }}" required>
+                </div>
+                <input type="hidden" name="date_from" value="{{ dateFrom|attr }}">
+                <input type="hidden" name="date_to" value="{{ dateTo|attr }}">
+            {% else %}
+                <div class="form-group col-md-2">
+                    <label for="date_from">{{ 'From'|xlt }}</label>
+                    <input class="form-control" id="date_from" type="date" name="date_from" value="{{ dateFrom|attr }}" required>
+                </div>
+                <div class="form-group col-md-2">
+                    <label for="date_to">{{ 'To'|xlt }}</label>
+                    <input class="form-control" id="date_to" type="date" name="date_to" value="{{ dateTo|attr }}" required>
+                </div>
+                <input type="hidden" name="date" value="{{ date|attr }}">
+            {% endif %}
+            <div class="form-group col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary" type="submit">{{ 'Show'|xlt }}</button>
+            </div>
+        </div>
+        {% if team %}
+            <a class="btn btn-outline-secondary" href="{{ exportUrl|attr }}">{{ 'Export CSV'|xlt }}</a>
+            <button class="btn btn-outline-secondary" id="print-matrix" type="button">{{ 'Print'|xlt }}</button>
+        {% endif %}
+    </div>
+</form>
+
+{% if team is null %}
+    <div class="alert alert-info no-print">{{ 'Choose a team to see its visits.'|xlt }}</div>
+{% elseif rows is empty and errors is empty %}
+    <div class="alert alert-info">{{ 'No patients are on this team for these dates. Assign patients from the Teams page.'|xlt }}</div>
+{% else %}
+    <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+        <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+        <input type="hidden" name="date" value="{{ date|attr }}">
+
+        {% if editable %}
+            <div class="card mb-3 no-print">
+                <div class="card-header">{{ 'Staff on duty'|xlt }}</div>
+                <div class="card-body">
+                    {% if members is empty %}
+                        <p class="mb-0">{{ 'Add staff to this team before recording a visit.'|xlt }}</p>
+                    {% else %}
+                        {% for member in members %}
+                            <div class="form-check form-check-inline">
+                                <input class="form-check-input" type="checkbox" id="staff-{{ member.user_id }}" name="staff[]" value="{{ member.user_id|attr }}" {% if member.user_id in selectedStaff %}checked{% endif %}>
+                                <label class="form-check-label" for="staff-{{ member.user_id }}">{{ member.name|text }}</label>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="table-responsive">
+            <table class="table table-sm table-bordered visit-matrix">
+                <thead>
+                    <tr>
+                        <th>{{ 'Patient name'|xlt }}</th>
+                        <th>{{ 'DATE'|xlt }}</th>
+                        {% for period in periods %}
+                            <th>{{ period.label|text }}</th>
+                        {% endfor %}
+                        <th>{{ 'STAFF'|xlt }}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <td>{{ row.patientName|text }}</td>
+                            <td>{{ row.dateDisplay|text }}</td>
+                            {% for period in periods %}
+                                {% set slot = row.slots[period.key] %}
+                                <td>
+                                    {% if editable %}
+                                        <div class="no-print">
+                                            <input class="form-control form-control-sm time-input" data-slot="slot-{{ row.pid }}-{{ period.key }}" aria-label="{{ period.label|attr }} {{ 'time in'|xla }}" name="slot[{{ row.pid }}][{{ period.key }}][in]" value="{{ slot.timeInDisplay|attr }}" placeholder="06:30" maxlength="5">
+                                            <input class="form-control form-control-sm time-input" data-slot="slot-{{ row.pid }}-{{ period.key }}" aria-label="{{ period.label|attr }} {{ 'time out'|xla }}" name="slot[{{ row.pid }}][{{ period.key }}][out]" value="{{ slot.timeOutDisplay|attr }}" placeholder="07:00" maxlength="5">
+                                            <div class="form-check">
+                                                <input class="form-check-input missed-toggle" data-missed-for="slot-{{ row.pid }}-{{ period.key }}" type="checkbox" id="missed-{{ row.pid }}-{{ period.key }}" name="slot[{{ row.pid }}][{{ period.key }}][missed]" value="1" {% if slot.status == 'missed' %}checked{% endif %}>
+                                                <label class="form-check-label" for="missed-{{ row.pid }}-{{ period.key }}">{{ 'Missed'|xlt }}</label>
+                                            </div>
+                                            {% if slot.durationDisplay %}
+                                                <span class="duration">{{ slot.durationDisplay|text }}</span>
+                                            {% endif %}
+                                        </div>
+                                        <div class="print-only">
+                                            {% if slot.status == 'missed' %}
+                                                <span class="missed-label">{{ 'Missed'|xlt }}</span>
+                                            {% elseif slot.timeInDisplay %}
+                                                {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
+                                                {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}
+                                            {% endif %}
+                                        </div>
+                                    {% else %}
+                                        {% if slot.status == 'missed' %}
+                                            <span class="missed-label">{{ 'Missed'|xlt }}</span>
+                                        {% elseif slot.timeInDisplay %}
+                                            {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
+                                            {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                            <td>{{ row.staffLabel|text }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if editable %}
+            <button class="btn btn-primary no-print" type="submit">{{ 'Save visit times'|xlt }}</button>
+        {% elseif mode == 'day' and team.active != 1 %}
+            <p class="text-muted no-print">{{ 'This team is inactive. Visits can be reviewed, not edited.'|xlt }}</p>
+        {% elseif mode == 'day' %}
+            <p class="text-muted no-print">{{ 'You can review this day. Saving times needs the Record permission.'|xlt }}</p>
+        {% endif %}
+    </form>
+{% endif %}

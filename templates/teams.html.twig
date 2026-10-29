@@ -1,0 +1,201 @@
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+    <h2 class="mb-0">{{ 'Provider Teams'|xlt }}</h2>
+    <a class="btn btn-outline-secondary" href="visits.php">{{ 'Visit dashboard'|xlt }}</a>
+</div>
+
+{% if notice %}
+    <div class="alert alert-success">{{ notice|text }}</div>
+{% endif %}
+{% for error in errors %}
+    <div class="alert alert-danger">{{ error|text }}</div>
+{% endfor %}
+
+<div class="row">
+    <div class="col-lg-4 mb-4">
+        <div class="card">
+            <div class="card-header">{{ 'Teams'|xlt }}</div>
+            <ul class="list-group list-group-flush">
+                {% for item in teams %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <a href="teams.php?team_id={{ item.id|attr }}">{{ item.name|text }}</a>
+                        <span class="text-muted small">
+                            {{ item.member_count|text }} {{ 'staff'|xlt }},
+                            {{ item.patient_count|text }} {{ 'patients'|xlt }}
+                            {% if item.active != 1 %}({{ 'inactive'|xlt }}){% endif %}
+                        </span>
+                    </li>
+                {% else %}
+                    <li class="list-group-item text-muted">{{ 'No teams yet.'|xlt }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <form method="post" class="card mt-3">
+            <div class="card-header">{{ 'New team'|xlt }}</div>
+            <div class="card-body">
+                <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                <input type="hidden" name="action" value="create">
+                <div class="form-group">
+                    <label for="new-name">{{ 'Name'|xlt }}</label>
+                    <input class="form-control" id="new-name" name="name" maxlength="100" required>
+                </div>
+                <div class="form-group">
+                    <label for="new-notes">{{ 'Notes'|xlt }}</label>
+                    <textarea class="form-control" id="new-notes" name="notes" rows="2"></textarea>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="new-active" name="active" value="1" checked>
+                    <label class="form-check-label" for="new-active">{{ 'Active'|xlt }}</label>
+                </div>
+                <button class="btn btn-primary" type="submit">{{ 'Create team'|xlt }}</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-8">
+        {% if team %}
+            <form method="post" class="card mb-4">
+                <div class="card-header">{{ 'Team details'|xlt }}</div>
+                <div class="card-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                    <div class="form-group">
+                        <label for="team-name">{{ 'Name'|xlt }}</label>
+                        <input class="form-control" id="team-name" name="name" maxlength="100" required value="{{ team.name|attr }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="team-notes">{{ 'Notes'|xlt }}</label>
+                        <textarea class="form-control" id="team-notes" name="notes" rows="3">{{ team.notes|text }}</textarea>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="team-active" name="active" value="1" {% if team.active == 1 %}checked{% endif %}>
+                        <label class="form-check-label" for="team-active">{{ 'Active'|xlt }}</label>
+                    </div>
+                    <button class="btn btn-primary" type="submit">{{ 'Save team'|xlt }}</button>
+                    <a class="btn btn-outline-primary" href="visits.php?team_id={{ team.id|attr }}">{{ 'Open visit dashboard'|xlt }}</a>
+                </div>
+            </form>
+
+            <div class="card mb-4">
+                <div class="card-header">{{ 'Staff on this team'|xlt }}</div>
+                <div class="card-body">
+                    <p class="text-muted">{{ 'Any active OpenEMR user can be added, including care staff who are not marked as clinical providers.'|xlt }}</p>
+                    {% if members %}
+                        <ul class="list-group mb-3">
+                            {% for member in members %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <span>{{ member.name|text }} <span class="text-muted">({{ member.username|text }})</span></span>
+                                    <form method="post" class="mb-0">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                                        <input type="hidden" name="action" value="remove_member">
+                                        <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                                        <input type="hidden" name="user_id" value="{{ member.user_id|attr }}">
+                                        <button class="btn btn-sm btn-outline-danger" type="submit">{{ 'Remove'|xlt }}</button>
+                                    </form>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <p>{{ 'No staff on this team yet.'|xlt }}</p>
+                    {% endif %}
+
+                    <form method="get" class="form-inline mb-3">
+                        <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                        <label class="sr-only" for="user-q">{{ 'Search staff'|xlt }}</label>
+                        <input class="form-control mr-2" id="user-q" name="user_q" value="{{ userQuery|attr }}" placeholder="{{ 'Search staff by name'|xla }}">
+                        <button class="btn btn-outline-secondary" type="submit">{{ 'Search'|xlt }}</button>
+                    </form>
+                    {% if userQuery|length >= 2 and userResults is empty %}
+                        <p class="text-muted">{{ 'No matching staff.'|xlt }}</p>
+                    {% endif %}
+                    {% for person in userResults %}
+                        <form method="post" class="d-flex justify-content-between align-items-center border-top py-2">
+                            <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                            <input type="hidden" name="action" value="add_member">
+                            <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                            <input type="hidden" name="user_id" value="{{ person.id|attr }}">
+                            <span>{{ person.name|text }} <span class="text-muted">({{ person.username|text }})</span></span>
+                            <button class="btn btn-sm btn-primary" type="submit">{{ 'Add'|xlt }}</button>
+                        </form>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">{{ 'Patients on this team'|xlt }}</div>
+                <div class="card-body">
+                    <p class="text-muted">{{ 'A patient can belong to one active team. Order is the round order on the visit dashboard. Unassigning keeps past visits.'|xlt }}</p>
+                    {% if patients %}
+                        <form method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                            <input type="hidden" name="action" value="save_order">
+                            <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>{{ 'Order'|xlt }}</th>
+                                        <th>{{ 'Patient'|xlt }}</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for patient in patients %}
+                                        <tr>
+                                            <td style="width: 6rem;">
+                                                <input class="form-control form-control-sm" type="number" min="0" name="position[{{ patient.pid }}]" value="{{ patient.position|attr }}">
+                                            </td>
+                                            <td>
+                                                {{ patient.name|text }}
+                                                {% if patient.pubpid %}<span class="text-muted">({{ patient.pubpid|text }})</span>{% endif %}
+                                            </td>
+                                            <td class="text-right">
+                                                <button class="btn btn-sm btn-outline-danger" type="submit" form="unassign-{{ patient.pid }}">{{ 'Unassign'|xlt }}</button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <button class="btn btn-primary" type="submit">{{ 'Save order'|xlt }}</button>
+                        </form>
+                        {% for patient in patients %}
+                            <form id="unassign-{{ patient.pid }}" method="post" class="d-none">
+                                <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                                <input type="hidden" name="action" value="unassign_patient">
+                                <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                                <input type="hidden" name="pid" value="{{ patient.pid|attr }}">
+                            </form>
+                        {% endfor %}
+                    {% else %}
+                        <p>{{ 'No patients on this team yet.'|xlt }}</p>
+                    {% endif %}
+
+                    <form method="get" class="form-inline mt-3 mb-3">
+                        <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                        <label class="sr-only" for="patient-q">{{ 'Search patients'|xlt }}</label>
+                        <input class="form-control mr-2" id="patient-q" name="patient_q" value="{{ patientQuery|attr }}" placeholder="{{ 'Search patients by name or ID'|xla }}">
+                        <button class="btn btn-outline-secondary" type="submit">{{ 'Search'|xlt }}</button>
+                    </form>
+                    {% if patientQuery|length >= 2 and patientResults is empty %}
+                        <p class="text-muted">{{ 'No matching patients.'|xlt }}</p>
+                    {% endif %}
+                    {% for patient in patientResults %}
+                        <form method="post" class="d-flex justify-content-between align-items-center border-top py-2">
+                            <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                            <input type="hidden" name="action" value="assign_patient">
+                            <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                            <input type="hidden" name="pid" value="{{ patient.pid|attr }}">
+                            <span>
+                                {{ patient.name|text }}
+                                {% if patient.pubpid %}<span class="text-muted">({{ patient.pubpid|text }})</span>{% endif %}
+                            </span>
+                            <button class="btn btn-sm btn-primary" type="submit">{{ 'Assign'|xlt }}</button>
+                        </form>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-info">{{ 'Select a team, or create one, to add staff and patients.'|xlt }}</div>
+        {% endif %}
+    </div>
+</div>
