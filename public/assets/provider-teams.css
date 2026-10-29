@@ -1,0 +1,42 @@
+.provider-teams .visit-matrix {
+    font-size: 0.92rem;
+}
+
+.provider-teams .visit-matrix .time-input {
+    width: 5.6rem;
+    display: inline-block;
+}
+
+.provider-teams .visit-matrix .duration {
+    display: block;
+    margin-top: 0.15rem;
+    color: #6c757d;
+    font-size: 0.75rem;
+}
+
+.provider-teams .missed-label {
+    color: #842029;
+    font-weight: 600;
+}
+
+.provider-teams .print-only {
+    display: none;
+}
+
+.provider-teams .purpose {
+    max-width: 52rem;
+}
+
+@media print {
+    .provider-teams .no-print {
+        display: none !important;
+    }
+
+    .provider-teams .print-only {
+        display: block !important;
+    }
+
+    .provider-teams .visit-matrix {
+        font-size: 11px;
+    }
+}
