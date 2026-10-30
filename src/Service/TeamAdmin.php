@@ -18,6 +18,7 @@ final class TeamAdmin
     public function __construct(
         private readonly TeamStore $teams,
         private readonly DirectoryStore $directory,
+        private readonly CareTeamSync $careTeamSync,
     ) {
     }
 
@@ -83,6 +84,7 @@ final class TeamAdmin
             throw new TeamRuleException('That staff member was not found.');
         }
         $this->teams->addMember($teamId, $userId);
+        $this->careTeamSync->syncTeamToAllPatients($teamId);
     }
 
     public function removeMember(int $teamId, int $userId): void
@@ -92,6 +94,7 @@ final class TeamAdmin
             throw new TeamRuleException('That staff member is not on this team.');
         }
         $this->teams->deactivateMember($teamId, $userId);
+        $this->careTeamSync->syncTeamToAllPatients($teamId);
     }
 
     public function assignPatient(int $teamId, int $pid): string
@@ -100,13 +103,41 @@ final class TeamAdmin
         if ($pid <= 0) {
             throw new TeamRuleException('That patient was not found.');
         }
-        return $this->teams->assignPatient($teamId, $pid);
+        $result = $this->teams->assignPatient($teamId, $pid);
+        if ($result === 'assigned') {
+            $this->careTeamSync->syncTeamToPatient($teamId, $pid);
+        }
+        return $result;
     }
 
     public function unassignPatient(int $teamId, int $pid): void
     {
         $this->requireTeam($teamId);
+        $this->careTeamSync->clearModuleCareTeamForPatient($teamId, $pid);
         $this->teams->unassignPatient($teamId, $pid);
+    }
+
+    /**
+     * @return array{team_id: int, team_name: string, patient_count: int, added: int, removed: int}|null
+     */
+    public function pullCareTeamFromPatient(int $teamId, int $pid): ?array
+    {
+        $this->requireTeam($teamId);
+        $assignment = $this->teams->activeTeamForPatient($pid);
+        if ($assignment === null || (int) $assignment['team_id'] !== $teamId) {
+            throw new TeamRuleException('That patient is not on this team.');
+        }
+        return $this->careTeamSync->applyPatientCareTeamToProviderTeam($pid);
+    }
+
+    public function careTeamSyncAvailable(): bool
+    {
+        return $this->careTeamSync->isAvailable();
+    }
+
+    public function activePatientCount(int $teamId): int
+    {
+        return $this->teams->activePatientCount($teamId);
     }
 
     /**

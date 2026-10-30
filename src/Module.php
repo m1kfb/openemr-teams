@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Wires the module's pages to OpenEMR.
+ * Wires the Provider Teams module pages and services.
  *
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL-3.0-or-later
  */
@@ -18,15 +18,21 @@ use OpenEMR\Modules\ProviderTeams\Http\VisitController;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
+use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
 use OpenEMR\Modules\ProviderTeams\Service\VisitBoard;
 
 final class Module
 {
+    public static function teamAdmin(): TeamAdmin
+    {
+        return new TeamAdmin(new TeamStore(), new DirectoryStore(), new CareTeamSync());
+    }
+
     public static function teamController(): TeamController
     {
         return new TeamController(
-            new TeamAdmin(new TeamStore(), new DirectoryStore()),
+            self::teamAdmin(),
             new Access(),
             new Csrf(),
             new Templates(),
@@ -36,7 +42,7 @@ final class Module
     public static function visitController(): VisitController
     {
         return new VisitController(
-            new TeamAdmin(new TeamStore(), new DirectoryStore()),
+            self::teamAdmin(),
             new VisitBoard(new TeamStore(), new VisitStore()),
             new Access(),
             new Csrf(),

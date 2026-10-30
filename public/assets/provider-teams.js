@@ -18,4 +18,15 @@
         box.addEventListener("change", sync);
         sync();
     });
+
+    document.querySelectorAll(".provider-teams-pull-care-team").forEach(function (form) {
+        form.addEventListener("submit", function (event) {
+            var teamName = form.getAttribute("data-team-name") || "";
+            var count = form.getAttribute("data-patient-count") || "0";
+            var message = "This updates " + teamName + " for " + count + " patients. Continue?";
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
+        });
+    });
 }());

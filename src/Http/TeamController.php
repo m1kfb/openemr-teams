@@ -79,6 +79,15 @@ final class TeamController
                     $positions = $post['position'] ?? [];
                     $this->admin->saveOrder($teamId, is_array($positions) ? $positions : []);
                     return $this->redirect($teamId, 'order_saved');
+                case 'pull_care_team':
+                    $pid = $this->int($post['pid'] ?? 0);
+                    $result = $this->admin->pullCareTeamFromPatient($teamId, $pid);
+                    if ($result === null) {
+                        return $this->get($teamId, ['team_id' => $teamId], [
+                            'Care team sync is not available on this OpenEMR database schema.',
+                        ]);
+                    }
+                    return $this->redirect($teamId, 'care_team_pulled');
                 default:
                     return $this->get($teamId, ['team_id' => $teamId], ['Unknown action.']);
             }
@@ -111,6 +120,8 @@ final class TeamController
             'patientQuery' => $patientQuery,
             'userResults' => $team === null ? [] : $this->admin->searchUsers($userQuery),
             'patientResults' => $team === null ? [] : $this->admin->searchPatients($patientQuery),
+            'careTeamSyncAvailable' => $this->admin->careTeamSyncAvailable(),
+            'teamPatientCount' => $team === null ? 0 : $this->admin->activePatientCount($team['id']),
             'errors' => $errors,
             'notice' => $this->notice($this->text($query['notice'] ?? '')),
         ]);
@@ -136,6 +147,7 @@ final class TeamController
             'patient_already' => 'This patient is already on the team.',
             'patient_unassigned' => 'Patient unassigned. Past visits stay on the dashboard.',
             'order_saved' => 'Patient order saved.',
+            'care_team_pulled' => 'Provider team staff updated from the patient care team. Care teams refreshed for all patients on this team.',
             default => '',
         };
         if ($text === '') {
