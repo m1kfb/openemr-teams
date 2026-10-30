@@ -78,6 +78,42 @@
             </form>
 
             <div class="card mb-4">
+                <div class="card-header">{{ 'Care Team sync'|xlt }}</div>
+                <div class="card-body">
+                    {% if careTeamSyncAvailable %}
+                        <p class="text-muted">{{ 'When staff or patients change on this team, their OpenEMR Care Team is updated automatically. Changes made on a single patient Care Team stay on that patient unless you apply them to the whole provider team below.'|xlt }}</p>
+                        <p class="text-muted">{{ 'Only OpenEMR users are synced. Related persons and contacts on the Care Team are ignored.'|xlt }}</p>
+                        {% if patients %}
+                            <p>{{ 'Pull changes from this patient\'s Care Team'|xlt }}:</p>
+                            <ul class="list-group mb-0">
+                                {% for patient in patients %}
+                                    <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
+                                        <span>
+                                            {{ patient.name|text }}
+                                            {% if patient.pubpid %}<span class="text-muted">({{ patient.pubpid|text }})</span>{% endif %}
+                                        </span>
+                                        <form method="post" class="mb-0 mt-2 mt-md-0 provider-teams-pull-care-team"
+                                              data-team-name="{{ team.name|attr }}"
+                                              data-patient-count="{{ teamPatientCount|attr }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                                            <input type="hidden" name="action" value="pull_care_team">
+                                            <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                                            <input type="hidden" name="pid" value="{{ patient.pid|attr }}">
+                                            <button class="btn btn-sm btn-outline-primary" type="submit">{{ 'Apply to whole team'|xlt }}</button>
+                                        </form>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <p class="text-muted mb-0">{{ 'Assign patients to use care team sync.'|xlt }}</p>
+                        {% endif %}
+                    {% else %}
+                        <p class="text-muted mb-0">{{ 'Care team sync requires OpenEMR 8.x care team tables (care_teams and care_team_member). Legacy 7.x demographics care team fields are not synced.'|xlt }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="card mb-4">
                 <div class="card-header">{{ 'Staff on this team'|xlt }}</div>
                 <div class="card-body">
                     <p class="text-muted">{{ 'Any active OpenEMR user can be added, including care staff who are not marked as clinical providers.'|xlt }}</p>

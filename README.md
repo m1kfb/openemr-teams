@@ -25,6 +25,18 @@ Enabling the module adds a **Provider Teams** menu and grants the new access con
 
 **Teams.** Create a team such as Team 5. Search OpenEMR users and add the care staff. Any active user can be added, including staff who are not marked as clinical providers. Search existing patients and assign them. A patient can be on one active team. The order number is the round order on the dashboard. Unassigning a patient keeps visits already recorded.
 
+### Care Team sync (OpenEMR 8.x)
+
+This module keeps the **Provider Teams** roster aligned with each assigned patient’s **Care Team** on the patient dashboard.
+
+**Team → patient (automatic).** When you add or remove staff on a provider team, or assign or unassign a patient, the module updates that patient’s Care Team through OpenEMR’s `CareTeamService` (`saveCareTeam` / `getCareTeamData`). It records each member it adds in `provider_team_care_team_links` so it never duplicates users and only removes members it added. Manually added Care Team members are never removed by provider-team changes. Related persons and contacts on the Care Team are not synced.
+
+**Patient → team (opt-in only).** Editing a patient’s Care Team in core does **not** change the provider team unless you explicitly choose **Apply to whole team** on the module **Teams** page (one button per assigned patient). A confirmation shows the provider team name and how many patients are on that team (for example, “This updates North Team for 24 patients”). That action updates provider-team staff from the selected patient’s Care Team (OpenEMR users only), then refreshes Care Teams for every patient on the team. Staff are removed from the provider team only when they were module-linked on that patient’s Care Team and are no longer on it; manually added Care Team members do not drive removals.
+
+OpenEMR does not fire an event when the Care Team is saved, and the Care Team card template does not render module injections, so the opt-in control lives on the module **Teams** page rather than on the core Care Team editor.
+
+**OpenEMR 7.x.** Sync requires the `care_teams` and `care_team_member` tables (OpenEMR 8+ style). Older 7.x sites that still use legacy demographics care team fields will log a notice and skip sync. Run **Upgrade SQL** (`sql/1_0_0-to-1_0_1_upgrade.sql`) on existing installs to add the link table.
+
 **Visit dashboard.** Choose the team and a date. Tick the staff on duty, enter time in and time out for each call, or mark a call missed. **Audit a date range** shows up to 31 days read-only, with the same columns as the paper log, a print header for CQC and Care Certificate records, and a CSV download. Missed calls export as `XXXXXX` / `XXX`.
 
 ## Develop
@@ -34,4 +46,4 @@ composer install
 composer test
 ```
 
-The tests cover time parsing, missed calls, duration, and matrix assembly. They do not need a running OpenEMR site.
+The tests cover time parsing, missed calls, duration, matrix assembly, and care team reconciliation rules. They do not need a running OpenEMR site.

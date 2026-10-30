@@ -117,6 +117,49 @@ final class TeamStore
         );
     }
 
+    /**
+     * @return list<int>
+     */
+    public function activePatientIds(int $teamId): array
+    {
+        $rows = QueryUtils::fetchRecords(
+            'SELECT pid FROM provider_team_patients WHERE team_id = ? AND active = 1 ORDER BY position, pid',
+            [$teamId]
+        );
+        return array_map(static fn (array $row): int => (int) $row['pid'], $rows);
+    }
+
+    public function activePatientCount(int $teamId): int
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT COUNT(*) AS cnt FROM provider_team_patients WHERE team_id = ? AND active = 1',
+            [$teamId]
+        );
+        return is_array($row) ? (int) $row['cnt'] : 0;
+    }
+
+    /**
+     * @return array{team_id: int, team_name: string}|null
+     */
+    public function activeTeamForPatient(int $pid): ?array
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT a.team_id, t.name AS team_name
+             FROM provider_team_patients a
+             INNER JOIN provider_teams t ON t.id = a.team_id
+             WHERE a.pid = ? AND a.active = 1 AND t.active = 1
+             LIMIT 1',
+            [$pid]
+        );
+        if (!is_array($row)) {
+            return null;
+        }
+        return [
+            'team_id' => (int) $row['team_id'],
+            'team_name' => (string) $row['team_name'],
+        ];
+    }
+
     public function addMember(int $teamId, int $userId): void
     {
         $existing = QueryUtils::querySingleRow(
