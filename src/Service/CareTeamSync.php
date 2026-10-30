@@ -45,7 +45,7 @@ final class CareTeamSync
         CareTeamSyncGuard::runTeamToPatient(function () use ($teamId): void {
             $memberIds = $this->teams->activeMemberIds($teamId);
             foreach ($this->teams->activePatientIds($teamId) as $pid) {
-                $this->syncTeamToPatient($teamId, $pid, $memberIds);
+                $this->applyTeamToPatient($teamId, $pid, $memberIds);
             }
         });
     }
@@ -59,7 +59,7 @@ final class CareTeamSync
             return;
         }
         CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid): void {
-            $this->syncTeamToPatient($teamId, $pid, $this->teams->activeMemberIds($teamId));
+            $this->applyTeamToPatient($teamId, $pid, $this->teams->activeMemberIds($teamId));
         });
     }
 
@@ -129,7 +129,7 @@ final class CareTeamSync
     /**
      * @param list<int> $teamMemberUserIds
      */
-    private function syncTeamToPatient(int $teamId, int $pid, array $teamMemberUserIds): void
+    private function applyTeamToPatient(int $teamId, int $pid, array $teamMemberUserIds): void
     {
         $careUsers = $this->careTeams->activeUserIdsForPatient($pid);
         $tracked = $this->links->trackedUserIds($teamId, $pid);
