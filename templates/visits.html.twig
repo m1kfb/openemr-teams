@@ -120,7 +120,7 @@
                                             <input class="form-control form-control-sm time-input" data-slot="slot-{{ row.pid }}-{{ period.key }}" aria-label="{{ period.label|attr }} {{ 'time out'|xla }}" name="slot[{{ row.pid }}][{{ period.key }}][out]" value="{{ slot.timeOutDisplay|attr }}" placeholder="07:00" maxlength="5">
                                             <div class="form-check">
                                                 <input class="form-check-input missed-toggle" data-missed-for="slot-{{ row.pid }}-{{ period.key }}" type="checkbox" id="missed-{{ row.pid }}-{{ period.key }}" name="slot[{{ row.pid }}][{{ period.key }}][missed]" value="1" {% if slot.status == 'missed' %}checked{% endif %}>
-                                                <label class="form-check-label" for="missed-{{ row.pid }}-{{ period.key }}">{{ 'Missed'|xlt }}</label>
+                                                <label class="form-check-label" for="missed-{{ row.pid }}-{{ period.key }}">{{ 'Not required'|xlt }}</label>
                                             </div>
                                             {% if slot.durationDisplay %}
                                                 <span class="duration">{{ slot.durationDisplay|text }}</span>
@@ -128,7 +128,7 @@
                                         </div>
                                         <div class="print-only">
                                             {% if slot.status == 'missed' %}
-                                                <span class="missed-label">{{ 'Missed'|xlt }}</span>
+                                                <span class="missed-label">{{ 'Not required'|xlt }}</span>
                                             {% elseif slot.timeInDisplay %}
                                                 {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
                                                 {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}
@@ -136,7 +136,7 @@
                                         </div>
                                     {% else %}
                                         {% if slot.status == 'missed' %}
-                                            <span class="missed-label">{{ 'Missed'|xlt }}</span>
+                                            <span class="missed-label">{{ 'Not required'|xlt }}</span>
                                         {% elseif slot.timeInDisplay %}
                                             {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
                                             {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}

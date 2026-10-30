@@ -26,7 +26,7 @@ final class VisitSlotValidator
                 break;
             case VisitStatus::MISSED:
                 if ($timeIn !== null || $timeOut !== null) {
-                    $errors[] = 'A missed visit cannot have times.';
+                    $errors[] = 'A call marked not required cannot have times.';
                 }
                 break;
             case VisitStatus::RECORDED:
