@@ -8,7 +8,7 @@ Visits stay in this module. They are not created as OpenEMR encounters.
 
 ## Install
 
-Requires OpenEMR 7 and PHP 8.1 or newer.
+Requires OpenEMR 7+ (tested on 8.5.0) and PHP 8.1 or newer. Older OpenEMR 7.x releases are supported on a best-effort basis.
 
 1. Copy this directory to `interface/modules/custom_modules/oe-module-provider-teams` on the OpenEMR server. The folder name is part of the menu URL.
 2. Log in as an administrator and open **Modules → Manage Modules**.

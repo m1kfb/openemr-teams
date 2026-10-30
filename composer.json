@@ -1,6 +1,6 @@
 {
     "name": "openemr/oe-module-provider-teams",
-    "description": "Assign patients and care staff to teams and record visit time in and time out.",
+    "description": "Assign patients and care staff to teams and record visit time in and time out. Requires OpenEMR 7+ (tested on 8.5.0).",
     "type": "openemr-module",
     "license": "GPL-3.0-or-later",
     "require": {
