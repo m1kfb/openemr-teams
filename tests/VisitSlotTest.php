@@ -70,7 +70,7 @@ final class VisitSlotTest extends TestCase
         $validator = new VisitSlotValidator();
         self::assertSame([], $validator->validate(VisitStatus::RECORDED, 360, 410));
         self::assertSame(
-            ['A missed visit cannot have times.'],
+            ['A call marked not required cannot have times.'],
             $validator->validate(VisitStatus::MISSED, 360, null)
         );
         self::assertSame(

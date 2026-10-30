@@ -21,7 +21,7 @@ final class VisitStatus
         return match ($status) {
             self::BLANK => 'Blank',
             self::RECORDED => 'Recorded',
-            self::MISSED => 'Missed',
+            self::MISSED => 'Not required',
             default => throw new \InvalidArgumentException('Unknown visit status: ' . $status),
         };
     }
