@@ -50,6 +50,31 @@ class CareTeamBridge
     }
 
     /**
+     * User ids still listed on the care team payload (any member status).
+     *
+     * @return list<int>
+     */
+    public function presentUserIdsForPatient(int $pid): array
+    {
+        if (!$this->detectModernSchema()) {
+            return [];
+        }
+        $service = new CareTeamService();
+        $data = $service->getCareTeamData($pid);
+        $ids = [];
+        foreach ($data['members'] ?? [] as $member) {
+            if (($member['member_type'] ?? 'user') !== 'user') {
+                continue;
+            }
+            $userId = (int) ($member['user_id'] ?? 0);
+            if ($userId > 0) {
+                $ids[] = $userId;
+            }
+        }
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * @param list<int> $ensureUserIds
      * @param list<int> $removeUserIds
      */

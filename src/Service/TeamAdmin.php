@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
+use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 
@@ -66,7 +67,8 @@ final class TeamAdmin
 
     public function update(int $teamId, string $name, string $notes, bool $active): void
     {
-        if ($this->teams->find($teamId) === null) {
+        $existing = $this->teams->find($teamId);
+        if ($existing === null) {
             throw new TeamRuleException('That team was not found.');
         }
         $name = $this->cleanName($name);
@@ -74,7 +76,11 @@ final class TeamAdmin
         if ($this->teams->nameTaken($name, $teamId)) {
             throw new TeamRuleException('A team with that name already exists.');
         }
+        $wasActive = (int) $existing['active'] === 1;
         $this->teams->update($teamId, $name, $notes, $active);
+        if ($wasActive && !$active) {
+            $this->careTeamSync->clearModuleCareTeamForAllPatients($teamId);
+        }
     }
 
     public function addMember(int $teamId, int $userId): void
@@ -118,7 +124,14 @@ final class TeamAdmin
     }
 
     /**
-     * @return array{team_id: int, team_name: string, patient_count: int, added: int, removed: int}|null
+     * @return array{
+     *   team_id: int,
+     *   team_name: string,
+     *   patient_count: int,
+     *   added: int,
+     *   removed: int,
+     *   care_team_sync: CareTeamSyncBatchResult
+     * }|null
      */
     public function pullCareTeamFromPatient(int $teamId, int $pid): ?array
     {
@@ -128,6 +141,30 @@ final class TeamAdmin
             throw new TeamRuleException('That patient is not on this team.');
         }
         return $this->careTeamSync->applyPatientCareTeamToProviderTeam($pid);
+    }
+
+    /**
+     * @param list<int|string> $patientIds
+     */
+    public function retryCareTeamSync(int $teamId, array $patientIds): CareTeamSyncBatchResult
+    {
+        $this->requireTeam($teamId);
+        $clean = [];
+        foreach ($patientIds as $patientId) {
+            if (!is_scalar($patientId)) {
+                continue;
+            }
+            $pid = (int) $patientId;
+            if ($pid <= 0) {
+                continue;
+            }
+            $assignment = $this->teams->activeTeamForPatient($pid);
+            if ($assignment === null || (int) $assignment['team_id'] !== $teamId) {
+                continue;
+            }
+            $clean[] = $pid;
+        }
+        return $this->careTeamSync->syncTeamToPatients($teamId, $clean);
     }
 
     public function careTeamSyncAvailable(): bool

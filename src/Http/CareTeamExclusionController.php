@@ -64,7 +64,7 @@ final class CareTeamExclusionController
 
         $this->sync->restoreExcludedMember($teamId, $pid, $userId);
 
-        header('Location: /interface/patient_file/summary/demographics.php?set_pid=' . urlencode((string) $pid));
+        header('Location: ' . WebPaths::patientDemographics($pid));
         exit;
     }
 }

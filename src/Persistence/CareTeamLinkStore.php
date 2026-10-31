@@ -97,16 +97,16 @@ class CareTeamLinkStore
     /**
      * When a tracked user is no longer on the care team but still on the provider team, record an opt-out.
      *
-     * @param list<int> $careTeamUserIds
+     * @param list<int> $presentCareTeamUserIds Users still listed on the care team (any status)
      * @param list<int> $providerTeamMemberUserIds
      */
     public function recordManualRemovals(
         int $providerTeamId,
         int $pid,
-        array $careTeamUserIds,
+        array $presentCareTeamUserIds,
         array $providerTeamMemberUserIds,
     ): void {
-        $careSet = array_fill_keys($careTeamUserIds, true);
+        $careSet = array_fill_keys($presentCareTeamUserIds, true);
         $teamSet = array_fill_keys($providerTeamMemberUserIds, true);
         foreach ($this->activeTrackedUserIds($providerTeamId, $pid) as $userId) {
             if (!isset($careSet[$userId]) && isset($teamSet[$userId])) {

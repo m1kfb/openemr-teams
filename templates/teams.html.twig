@@ -6,6 +6,33 @@
 {% if notice %}
     <div class="alert alert-success">{{ notice|text }}</div>
 {% endif %}
+{% if syncWarning %}
+    <div class="alert alert-warning" role="alert">
+        <p class="mb-2 font-weight-bold">{{ syncWarning.headline|text }}</p>
+        {% if syncWarning.failed %}
+            <ul class="mb-3 pl-3">
+                {% for row in syncWarning.failed %}
+                    <li class="mb-1">
+                        <a href="{{ row.demographics_url|attr }}">{{ row.name|text }}</a>
+                        {% if row.pubpid %}
+                            <span class="text-muted">({{ row.pubpid|text }})</span>
+                        {% endif %}
+                        — <span class="text-muted">{{ row.reason|text }}</span>
+                    </li>
+                {% endfor %}
+            </ul>
+            <form method="post" class="mb-0">
+                <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                <input type="hidden" name="action" value="retry_care_team_sync">
+                <input type="hidden" name="team_id" value="{{ syncWarning.team_id|attr }}">
+                {% for pid in syncWarning.retry_pids %}
+                    <input type="hidden" name="retry_pid[]" value="{{ pid|attr }}">
+                {% endfor %}
+                <button type="submit" class="btn btn-sm btn-warning">{{ 'Retry failed'|xlt }}</button>
+            </form>
+        {% endif %}
+    </div>
+{% endif %}
 {% for error in errors %}
     <div class="alert alert-danger">{{ error|text }}</div>
 {% endfor %}

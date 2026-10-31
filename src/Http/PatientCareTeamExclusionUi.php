@@ -17,15 +17,12 @@ use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
 
 final class PatientCareTeamExclusionUi
 {
-    private string $moduleDirectoryName;
-
     public function __construct(
         private readonly CareTeamSync $sync = new CareTeamSync(),
         private readonly TeamStore $teams = new TeamStore(),
         private readonly Csrf $csrf = new Csrf(),
         private readonly Templates $templates = new Templates(),
     ) {
-        $this->moduleDirectoryName = basename(dirname(__DIR__, 2));
     }
 
     public function render(int $pid): string
@@ -45,28 +42,22 @@ final class PatientCareTeamExclusionUi
         $memberCount = count($members);
         return $this->templates->render('care_team_exclusions.html.twig', [
             'cardSelector' => '#card_care_team .card-body, #careteam_ps_expand .card-body',
-            'reservedHeightPx' => 48 + ($memberCount * 40),
+            'panelMinHeightPx' => 88 + ($memberCount * 44),
             'members' => $members,
             'teamId' => (int) $assignment['team_id'],
             'teamName' => (string) $assignment['team_name'],
             'pid' => $pid,
             'canRestore' => $canRestore,
             'csrfToken' => $this->csrf->token(),
-            'restoreUrl' => $this->publicUrl('care_team_exclusion.php'),
+            'restoreUrl' => WebPaths::modulePublic('care_team_exclusion.php'),
             'stylesheet' => Module::stylesheetPath(),
             'labels' => [
                 'heading' => $this->xl('Provider team members removed for this patient'),
                 'removedTag' => $this->xl('Removed for this patient'),
                 'addBack' => $this->xl('Add back'),
                 'teamLabel' => $this->xl('Provider team'),
-                'loading' => $this->xl('Loading provider team exclusions…'),
             ],
         ]);
-    }
-
-    private function publicUrl(string $script): string
-    {
-        return '/interface/modules/custom_modules/' . $this->moduleDirectoryName . '/public/' . $script;
     }
 
     private function xl(string $text): string

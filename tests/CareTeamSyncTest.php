@@ -32,6 +32,7 @@ final class CareTeamSyncTest extends TestCase
         $bridge = $this->createMock(CareTeamBridge::class);
         $bridge->method('isSupported')->willReturn(true);
         $bridge->method('activeUserIdsForPatient')->willReturn([10]);
+        $bridge->method('presentUserIdsForPatient')->willReturn([10]);
 
         $teams = $this->createMock(TeamStore::class);
         $teams->method('find')->willReturn(['id' => 3, 'active' => 1, 'name' => 'T', 'notes' => '']);
@@ -93,5 +94,49 @@ final class CareTeamSyncTest extends TestCase
 
         $sync = new CareTeamSync($teams, $bridge, $links, new CareTeamReconciler());
         $sync->restoreExcludedMember(2, 5, 7);
+    }
+
+    public function testSyncTeamToPatientsCollectsPartialFailures(): void
+    {
+        $links = $this->createMock(CareTeamLinkStore::class);
+        $links->method('withPatientTeamLock')
+            ->willReturnCallback(static fn (int $teamId, int $pid, callable $action): mixed => $action());
+        $links->method('recordManualRemovals');
+        $links->method('activeTrackedUserIds')->willReturn([]);
+        $links->method('excludedUserIds')->willReturn([]);
+
+        $bridge = $this->createMock(CareTeamBridge::class);
+        $bridge->method('isSupported')->willReturn(true);
+        $bridge->method('activeUserIdsForPatient')->willReturn([]);
+        $bridge->method('presentUserIdsForPatient')->willReturn([]);
+        $bridge->method('applyUserChanges')->willReturnCallback(
+            static function (int $pid): void {
+                if ($pid === 2) {
+                    throw new \RuntimeException('save failed for pid 2');
+                }
+            }
+        );
+
+        $teams = $this->createMock(TeamStore::class);
+        $teams->method('find')->willReturn(['id' => 1, 'active' => 1, 'name' => 'North', 'notes' => '']);
+        $teams->method('activeMemberIds')->willReturn([9]);
+        $teams->method('activePatients')->willReturn([
+            ['pid' => 1, 'name' => 'Alpha, One', 'pubpid' => 'A1', 'position' => 0],
+            ['pid' => 2, 'name' => 'Beta, Two', 'pubpid' => 'B2', 'position' => 1],
+        ]);
+        $teams->method('patientDisplay')->willReturnCallback(static fn (int $pid): array => [
+            'pid' => $pid,
+            'name' => 'Patient ' . $pid,
+            'pubpid' => '',
+        ]);
+
+        $sync = new CareTeamSync($teams, $bridge, $links, new CareTeamReconciler());
+        $result = $sync->syncTeamToPatients(1, [1, 2]);
+
+        self::assertSame(2, $result->attempted);
+        self::assertSame(1, $result->succeeded);
+        self::assertCount(1, $result->failed);
+        self::assertSame(2, $result->failed[0]['pid']);
+        self::assertSame('save failed for pid 2', $result->failed[0]['reason']);
     }
 }

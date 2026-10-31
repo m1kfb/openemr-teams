@@ -1,20 +1,7 @@
 <link rel="stylesheet" href="{{ stylesheet|e('html_attr') }}">
-<style>
-    .provider-teams-exclusions-placeholder {
-        margin-top: 0.75rem;
-        padding-top: 0.5rem;
-        border-top: 1px solid rgba(0, 0, 0, 0.08);
-    }
-    .provider-teams-exclusions-fallback-host {
-        display: none;
-    }
-    .provider-teams-exclusions-fallback-host.is-visible {
-        display: block;
-    }
-</style>
 <div id="provider-teams-exclusions-fallback-host" class="provider-teams-exclusions-fallback-host col-12 px-2 mb-3" aria-live="polite"></div>
 <template id="provider-teams-care-team-exclusions-template">
-    <div class="provider-teams-care-team-exclusions mt-3 pt-2 border-top">
+    <div class="provider-teams-care-team-exclusions mt-3 pt-2 border-top" style="min-height: {{ panelMinHeightPx|attr }}px">
         <p class="text-muted small mb-2">{{ labels.heading|text }}</p>
         <p class="small mb-2">{{ labels.teamLabel|text }}: <strong>{{ teamName|text }}</strong></p>
         <ul class="list-unstyled mb-0">
@@ -42,8 +29,6 @@
     'use strict';
     var logPrefix = 'Provider Teams:';
     var cardSelectors = {{ cardSelector|js_escape }};
-    var reservedHeightPx = {{ reservedHeightPx|js_escape }};
-    var loadingLabel = {{ labels.loading|js_escape }};
     var template = document.getElementById('provider-teams-care-team-exclusions-template');
     var fallbackHost = document.getElementById('provider-teams-exclusions-fallback-host');
     if (!template || !template.content) {
@@ -61,25 +46,27 @@
         return null;
     }
 
+    function revealPanel(root) {
+        if (!root) {
+            return;
+        }
+        root.classList.remove('provider-teams-exclusions-pre-reveal');
+    }
+
     var panel = template.content.cloneNode(true);
     template.remove();
+    var panelRoot = panel.querySelector('.provider-teams-care-team-exclusions');
+    if (panelRoot) {
+        panelRoot.classList.add('provider-teams-exclusions-pre-reveal');
+    }
 
     var cardBody = findCardBody();
     if (cardBody) {
-        var placeholder = document.createElement('div');
-        placeholder.className = 'provider-teams-exclusions-placeholder text-muted small';
-        placeholder.setAttribute('aria-busy', 'true');
-        placeholder.style.minHeight = String(reservedHeightPx) + 'px';
-        placeholder.textContent = loadingLabel;
-        cardBody.appendChild(placeholder);
-
+        cardBody.appendChild(panel);
         requestAnimationFrame(function () {
-            if (placeholder.parentNode) {
-                placeholder.replaceWith(panel);
-            }
+            revealPanel(panelRoot);
         });
-
-        if (fallbackHost) {
+        if (fallbackHost && fallbackHost.parentNode) {
             fallbackHost.parentNode.removeChild(fallbackHost);
         }
         return;
@@ -93,6 +80,9 @@
     if (fallbackHost) {
         fallbackHost.classList.add('is-visible');
         fallbackHost.appendChild(panel);
+        requestAnimationFrame(function () {
+            revealPanel(panelRoot);
+        });
         return;
     }
 
@@ -101,5 +91,8 @@
     wrap.className = 'provider-teams-exclusions-fallback-host is-visible col-12 px-2 mb-3';
     wrap.appendChild(panel);
     anchor.appendChild(wrap);
+    requestAnimationFrame(function () {
+        revealPanel(panelRoot);
+    });
 })();
 </script>
