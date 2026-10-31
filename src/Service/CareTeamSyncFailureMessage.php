@@ -24,4 +24,10 @@ final class CareTeamSyncFailureMessage
         $text = 'Care team could not be updated for this patient.';
         return function_exists('xl') ? xl($text) : $text;
     }
+
+    public static function teamActiveAgain(): string
+    {
+        $text = 'This team is active again, so module-added care team members were not removed.';
+        return function_exists('xl') ? xl($text) : $text;
+    }
 }

@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Tests;
 
 use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
+use OpenEMR\Modules\ProviderTeams\Http\CareTeamSyncFlash;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
@@ -30,6 +31,6 @@ final class TeamAdminRetryValidationTest extends TestCase
         $teams->method('activeTeamForPatient')->willReturn(['team_id' => 1, 'team_name' => 'T']);
 
         $admin = new TeamAdmin($teams, new DirectoryStore(), $sync);
-        $admin->retryCareTeamSync(1, ['5abc', '5', '00', '-3']);
+        $admin->retryCareTeamSync(1, ['5abc', '5', '00', '-3'], CareTeamSyncFlash::CONTEXT_TEAM_SYNC);
     }
 }

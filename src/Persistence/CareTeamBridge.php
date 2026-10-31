@@ -3,6 +3,8 @@
 /**
  * OpenEMR care-team reads/writes with schema detection (8.x care_teams / care_team_member).
  *
+ * Several methods are `protected` (not `private`) so unit tests can override I/O without a database.
+ *
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL-3.0-or-later
  */
 

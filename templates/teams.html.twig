@@ -25,10 +25,11 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
                 <input type="hidden" name="action" value="retry_care_team_sync">
                 <input type="hidden" name="team_id" value="{{ syncWarning.team_id|attr }}">
+                <input type="hidden" name="retry_context" value="{{ syncWarning.retry_context|attr }}">
                 {% for pid in syncWarning.retry_pids %}
                     <input type="hidden" name="retry_pid[]" value="{{ pid|attr }}">
                 {% endfor %}
-                <button type="submit" class="btn btn-sm btn-warning">{{ 'Retry failed'|xlt }}</button>
+                <button type="submit" class="btn btn-sm btn-warning">{{ syncWarning.retry_button_label|text }}</button>
             </form>
         {% endif %}
     </div>

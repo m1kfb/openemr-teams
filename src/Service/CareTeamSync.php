@@ -3,6 +3,9 @@
 /**
  * Keeps provider teams and patient care teams aligned (team → patient automatic; patient → team opt-in).
  *
+ * Intentionally not `final` so unit tests can substitute collaborators. Related test seams live on
+ * {@see CareTeamBridge} (`fetchCareTeamData`, `saveCareTeamPayload`, `detectModernSchema`).
+ *
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL-3.0-or-later
  */
 
@@ -98,13 +101,16 @@ class CareTeamSync
     /**
      * Remove module-added care-team members when a patient leaves the provider team.
      */
-    public function clearModuleCareTeamForPatient(int $teamId, int $pid): void
+    public function clearModuleCareTeamForPatient(int $teamId, int $pid, bool $requireInactiveTeam = false): void
     {
         if (!$this->careTeams->isSupported()) {
             return;
         }
-        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid): void {
-            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid): void {
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid, $requireInactiveTeam): void {
+            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $requireInactiveTeam): void {
+                if ($requireInactiveTeam) {
+                    $this->ensureTeamInactiveForDeactivationCleanup($teamId);
+                }
                 $tracked = $this->links->activeTrackedUserIds($teamId, $pid);
                 if ($tracked === []) {
                     return;
@@ -116,15 +122,18 @@ class CareTeamSync
     }
 
     /**
-     * Clear module-added care-team members for every patient still assigned to a team.
+     * @param list<int> $patientIds
      */
-    public function clearModuleCareTeamForAllPatients(int $teamId): CareTeamSyncBatchResult
-    {
+    public function clearModuleCareTeamForPatients(
+        int $teamId,
+        array $patientIds,
+        bool $requireInactiveTeam = false,
+    ): CareTeamSyncBatchResult {
         if (!$this->careTeams->isSupported()) {
             return new CareTeamSyncBatchResult(0, 0, []);
         }
 
-        $patientIds = $this->teams->activePatientIds($teamId);
+        $patientIds = $this->uniquePositive($patientIds);
         if ($patientIds === []) {
             return new CareTeamSyncBatchResult(0, 0, []);
         }
@@ -133,11 +142,26 @@ class CareTeamSync
         $failed = [];
         $succeeded = 0;
 
-        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $patientIds, $labels, &$failed, &$succeeded): void {
+        CareTeamSyncGuard::runTeamToPatient(function () use (
+            $teamId,
+            $patientIds,
+            $labels,
+            $requireInactiveTeam,
+            &$failed,
+            &$succeeded,
+        ): void {
             foreach ($patientIds as $pid) {
                 try {
-                    $this->clearModuleCareTeamForPatient($teamId, $pid);
+                    $this->clearModuleCareTeamForPatient($teamId, $pid, $requireInactiveTeam);
                     ++$succeeded;
+                } catch (TeamActiveAgainException) {
+                    $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
+                    $failed[] = [
+                        'pid' => $pid,
+                        'name' => $label['name'],
+                        'pubpid' => $label['pubpid'],
+                        'reason' => CareTeamSyncFailureMessage::teamActiveAgain(),
+                    ];
                 } catch (\Throwable $exception) {
                     $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
                     $failed[] = [
@@ -151,6 +175,22 @@ class CareTeamSync
         });
 
         return new CareTeamSyncBatchResult(count($patientIds), $succeeded, $failed);
+    }
+
+    /**
+     * Clear module-added care-team members for every patient still assigned to a team.
+     */
+    public function clearModuleCareTeamForAllPatients(int $teamId): CareTeamSyncBatchResult
+    {
+        return $this->clearModuleCareTeamForPatients($teamId, $this->teams->activePatientIds($teamId), false);
+    }
+
+    private function ensureTeamInactiveForDeactivationCleanup(int $teamId): void
+    {
+        $team = $this->teams->find($teamId);
+        if ($team === null || (int) $team['active'] === 1) {
+            throw new TeamActiveAgainException();
+        }
     }
 
     /**

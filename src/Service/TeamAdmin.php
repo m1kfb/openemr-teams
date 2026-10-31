@@ -11,6 +11,7 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
 use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
+use OpenEMR\Modules\ProviderTeams\Http\CareTeamSyncFlash;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 
@@ -147,7 +148,7 @@ final class TeamAdmin
     /**
      * @param list<int|string> $patientIds
      */
-    public function retryCareTeamSync(int $teamId, array $patientIds): CareTeamSyncBatchResult
+    public function retryCareTeamSync(int $teamId, array $patientIds, string $context): CareTeamSyncBatchResult
     {
         $this->requireTeam($teamId);
         $clean = [];
@@ -157,6 +158,13 @@ final class TeamAdmin
                 continue;
             }
             $clean[] = $pid;
+        }
+        if ($context === CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP) {
+            return $this->careTeamSync->clearModuleCareTeamForPatients($teamId, $clean, true);
+        }
+        $team = $this->teams->find($teamId);
+        if ($team !== null && (int) $team['active'] !== 1) {
+            return $this->careTeamSync->clearModuleCareTeamForPatients($teamId, $clean, true);
         }
         return $this->careTeamSync->syncTeamToPatients($teamId, $clean);
     }
