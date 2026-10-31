@@ -3,6 +3,9 @@
 /**
  * Keeps provider teams and patient care teams aligned (team → patient automatic; patient → team opt-in).
  *
+ * Intentionally not `final` so unit tests can substitute collaborators. Related test seams live on
+ * {@see CareTeamBridge} (`fetchCareTeamData`, `saveCareTeamPayload`, `detectModernSchema`).
+ *
  * @license https://www.gnu.org/licenses/gpl-3.0.html GPL-3.0-or-later
  */
 
@@ -11,11 +14,12 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
 use OpenEMR\Modules\ProviderTeams\Domain\CareTeamReconciler;
+use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
 use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamBridge;
 use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamLinkStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 
-final class CareTeamSync
+class CareTeamSync
 {
     public function __construct(
         private readonly TeamStore $teams = new TeamStore(),
@@ -33,21 +37,52 @@ final class CareTeamSync
     /**
      * After staff or roster changes on a provider team, refresh care teams for all assigned patients.
      */
-    public function syncTeamToAllPatients(int $teamId): void
+    public function syncTeamToAllPatients(int $teamId): CareTeamSyncBatchResult
+    {
+        return $this->syncTeamToPatients($teamId, $this->teams->activePatientIds($teamId));
+    }
+
+    /**
+     * @param list<int> $patientIds
+     */
+    public function syncTeamToPatients(int $teamId, array $patientIds): CareTeamSyncBatchResult
     {
         if (!$this->careTeams->isSupported() || CareTeamSyncGuard::shouldSkipTeamToPatient()) {
-            return;
+            return new CareTeamSyncBatchResult(0, 0, []);
         }
         $team = $this->teams->find($teamId);
         if ($team === null || (int) $team['active'] !== 1) {
-            return;
+            return new CareTeamSyncBatchResult(0, 0, []);
         }
-        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId): void {
+
+        $patientIds = $this->uniquePositive($patientIds);
+        if ($patientIds === []) {
+            return new CareTeamSyncBatchResult(0, 0, []);
+        }
+
+        $labels = $this->patientLabelsByPid($teamId);
+        $failed = [];
+        $succeeded = 0;
+
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $patientIds, $labels, &$failed, &$succeeded): void {
             $memberIds = $this->teams->activeMemberIds($teamId);
-            foreach ($this->teams->activePatientIds($teamId) as $pid) {
-                $this->applyTeamToPatient($teamId, $pid, $memberIds);
+            foreach ($patientIds as $pid) {
+                try {
+                    $this->applyTeamToPatient($teamId, $pid, $memberIds);
+                    ++$succeeded;
+                } catch (\Throwable $exception) {
+                    $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
+                    $failed[] = [
+                        'pid' => $pid,
+                        'name' => $label['name'],
+                        'pubpid' => $label['pubpid'],
+                        'reason' => CareTeamSyncFailureMessage::forPatient($teamId, $pid, $exception),
+                    ];
+                }
             }
         });
+
+        return new CareTeamSyncBatchResult(count($patientIds), $succeeded, $failed);
     }
 
     /**
@@ -66,25 +101,131 @@ final class CareTeamSync
     /**
      * Remove module-added care-team members when a patient leaves the provider team.
      */
-    public function clearModuleCareTeamForPatient(int $teamId, int $pid): void
+    public function clearModuleCareTeamForPatient(int $teamId, int $pid, bool $requireInactiveTeam = false): void
     {
         if (!$this->careTeams->isSupported()) {
             return;
         }
-        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid): void {
-            $tracked = $this->links->trackedUserIds($teamId, $pid);
-            if ($tracked === []) {
-                return;
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid, $requireInactiveTeam): void {
+            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $requireInactiveTeam): void {
+                if ($requireInactiveTeam) {
+                    $this->ensureTeamInactiveForDeactivationCleanup($teamId);
+                }
+                $tracked = $this->links->activeTrackedUserIds($teamId, $pid);
+                if ($tracked === []) {
+                    return;
+                }
+                $this->careTeams->applyUserChanges($pid, [], $tracked);
+                $this->links->forgetActiveLinksForPatientTeam($teamId, $pid);
+            });
+        });
+    }
+
+    /**
+     * @param list<int> $patientIds
+     */
+    public function clearModuleCareTeamForPatients(
+        int $teamId,
+        array $patientIds,
+        bool $requireInactiveTeam = false,
+    ): CareTeamSyncBatchResult {
+        if (!$this->careTeams->isSupported()) {
+            return new CareTeamSyncBatchResult(0, 0, []);
+        }
+
+        $patientIds = $this->uniquePositive($patientIds);
+        if ($patientIds === []) {
+            return new CareTeamSyncBatchResult(0, 0, []);
+        }
+
+        $labels = $this->patientLabelsByPid($teamId);
+        $failed = [];
+        $succeeded = 0;
+
+        CareTeamSyncGuard::runTeamToPatient(function () use (
+            $teamId,
+            $patientIds,
+            $labels,
+            $requireInactiveTeam,
+            &$failed,
+            &$succeeded,
+        ): void {
+            foreach ($patientIds as $pid) {
+                try {
+                    $this->clearModuleCareTeamForPatient($teamId, $pid, $requireInactiveTeam);
+                    ++$succeeded;
+                } catch (TeamActiveAgainException) {
+                    $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
+                    $failed[] = [
+                        'pid' => $pid,
+                        'name' => $label['name'],
+                        'pubpid' => $label['pubpid'],
+                        'reason' => CareTeamSyncFailureMessage::teamActiveAgain(),
+                    ];
+                } catch (\Throwable $exception) {
+                    $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
+                    $failed[] = [
+                        'pid' => $pid,
+                        'name' => $label['name'],
+                        'pubpid' => $label['pubpid'],
+                        'reason' => CareTeamSyncFailureMessage::forPatient($teamId, $pid, $exception),
+                    ];
+                }
             }
-            $this->careTeams->applyUserChanges($pid, [], $tracked);
-            $this->links->forgetAllForPatientTeam($teamId, $pid);
+        });
+
+        return new CareTeamSyncBatchResult(count($patientIds), $succeeded, $failed);
+    }
+
+    /**
+     * Clear module-added care-team members for every patient still assigned to a team.
+     */
+    public function clearModuleCareTeamForAllPatients(int $teamId): CareTeamSyncBatchResult
+    {
+        return $this->clearModuleCareTeamForPatients($teamId, $this->teams->activePatientIds($teamId), false);
+    }
+
+    private function ensureTeamInactiveForDeactivationCleanup(int $teamId): void
+    {
+        $team = $this->teams->find($teamId);
+        if ($team === null || (int) $team['active'] === 1) {
+            throw new TeamActiveAgainException();
+        }
+    }
+
+    /**
+     * Clear a per-patient exclusion and add the provider-team member back to the care team.
+     */
+    public function restoreExcludedMember(int $teamId, int $pid, int $userId): void
+    {
+        if (!$this->careTeams->isSupported()) {
+            return;
+        }
+        if ($userId <= 0 || !$this->links->isExcluded($teamId, $pid, $userId)) {
+            return;
+        }
+        if (!in_array($userId, $this->teams->activeMemberIds($teamId), true)) {
+            return;
+        }
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid, $userId): void {
+            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $userId): void {
+                $this->links->clearExclusion($teamId, $pid, $userId);
+                $this->applyTeamToPatientLocked($teamId, $pid, $this->teams->activeMemberIds($teamId));
+            });
         });
     }
 
     /**
      * Explicit opt-in: apply one patient's care team to provider-team staff, then refresh all patients.
      *
-     * @return array{team_id: int, team_name: string, patient_count: int, added: int, removed: int}|null
+     * @return array{
+     *   team_id: int,
+     *   team_name: string,
+     *   patient_count: int,
+     *   added: int,
+     *   removed: int,
+     *   care_team_sync: CareTeamSyncBatchResult
+     * }|null
      */
     public function applyPatientCareTeamToProviderTeam(int $pid): ?array
     {
@@ -101,7 +242,7 @@ final class CareTeamSync
         $summary = CareTeamSyncGuard::runPatientToTeam(function () use ($pid, $teamId, $teamName): array {
             $patientUsers = $this->careTeams->activeUserIdsForPatient($pid);
             $teamMembers = $this->teams->activeMemberIds($teamId);
-            $moduleLinked = $this->links->trackedUserIds($teamId, $pid);
+            $moduleLinked = $this->links->activeTrackedUserIds($teamId, $pid);
 
             $plan = $this->reconciler->planPatientToTeam($patientUsers, $teamMembers, $moduleLinked);
 
@@ -121,9 +262,9 @@ final class CareTeamSync
             ];
         });
 
-        $this->syncTeamToAllPatients($teamId);
+        $batch = $this->syncTeamToAllPatients($teamId);
 
-        return $summary;
+        return array_merge($summary, ['care_team_sync' => $batch]);
     }
 
     /**
@@ -131,9 +272,23 @@ final class CareTeamSync
      */
     private function applyTeamToPatient(int $teamId, int $pid, array $teamMemberUserIds): void
     {
+        $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $teamMemberUserIds): void {
+            $this->applyTeamToPatientLocked($teamId, $pid, $teamMemberUserIds);
+        });
+    }
+
+    /**
+     * @param list<int> $teamMemberUserIds
+     */
+    private function applyTeamToPatientLocked(int $teamId, int $pid, array $teamMemberUserIds): void
+    {
         $careUsers = $this->careTeams->activeUserIdsForPatient($pid);
-        $tracked = $this->links->trackedUserIds($teamId, $pid);
-        $plan = $this->reconciler->planTeamToPatient($teamMemberUserIds, $careUsers, $tracked);
+        $presentUserIds = $this->careTeams->presentUserIdsForPatient($pid);
+        $this->links->recordManualRemovals($teamId, $pid, $presentUserIds, $teamMemberUserIds);
+
+        $tracked = $this->links->activeTrackedUserIds($teamId, $pid);
+        $excluded = $this->links->excludedUserIds($teamId, $pid);
+        $plan = $this->reconciler->planTeamToPatient($teamMemberUserIds, $careUsers, $tracked, $excluded);
 
         if ($plan->ensureUserIds === [] && $plan->removeModuleUserIds === []) {
             return;
@@ -151,5 +306,53 @@ final class CareTeamSync
                 $this->links->remember($teamId, $pid, $userId, $memberId);
             }
         }
+    }
+
+    /**
+     * @return list<array{user_id: int, name: string, username: string}>
+     */
+    public function excludedMembersForPatient(int $pid): array
+    {
+        $assignment = $this->teams->activeTeamForPatient($pid);
+        if ($assignment === null) {
+            return [];
+        }
+        return $this->links->excludedMembers((int) $assignment['team_id'], $pid);
+    }
+
+    /**
+     * @return array<int, array{pid: int, name: string, pubpid: string}>
+     */
+    private function patientLabelsByPid(int $teamId): array
+    {
+        $map = [];
+        foreach ($this->teams->activePatients($teamId) as $patient) {
+            $pid = (int) $patient['pid'];
+            $map[$pid] = [
+                'pid' => $pid,
+                'name' => (string) $patient['name'],
+                'pubpid' => (string) $patient['pubpid'],
+            ];
+        }
+        return $map;
+    }
+
+    /**
+     * @param list<int> $ids
+     * @return list<int>
+     */
+    private function uniquePositive(array $ids): array
+    {
+        $seen = [];
+        $out = [];
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            if ($id <= 0 || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $out[] = $id;
+        }
+        return $out;
     }
 }

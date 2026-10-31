@@ -12,6 +12,7 @@ namespace OpenEMR\Modules\ProviderTeams;
 
 use OpenEMR\Modules\ProviderTeams\Http\Access;
 use OpenEMR\Modules\ProviderTeams\Http\Csrf;
+use OpenEMR\Modules\ProviderTeams\Http\PatientCareTeamExclusionUi;
 use OpenEMR\Modules\ProviderTeams\Http\TeamController;
 use OpenEMR\Modules\ProviderTeams\Http\Templates;
 use OpenEMR\Modules\ProviderTeams\Http\VisitController;
@@ -48,6 +49,11 @@ final class Module
             new Csrf(),
             new Templates(),
         );
+    }
+
+    public static function patientCareTeamExclusionUi(): PatientCareTeamExclusionUi
+    {
+        return new PatientCareTeamExclusionUi(new CareTeamSync());
     }
 
     public static function stylesheetPath(): string

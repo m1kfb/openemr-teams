@@ -10,7 +10,9 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Http;
 
+use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
+use OpenEMR\Modules\ProviderTeams\Service\CareTeamSyncFailureMessage;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
 use OpenEMR\Modules\ProviderTeams\Service\TeamJoinDateConfirmationRequired;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
@@ -57,12 +59,15 @@ final class TeamController
                     );
                     return $this->redirect($teamId, 'created');
                 case 'update':
-                    $this->admin->update(
+                    $batch = $this->admin->update(
                         $teamId,
                         $this->text($post['name'] ?? ''),
                         $this->text($post['notes'] ?? ''),
                         isset($post['active'])
                     );
+                    if ($batch !== null && !$batch->isFullSuccess()) {
+                        $this->storeSyncFlash($teamId, $batch, CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP);
+                    }
                     return $this->redirect($teamId, 'updated');
                 case 'add_member':
                     $this->admin->addMember($teamId, $this->int($post['user_id'] ?? 0));
@@ -98,7 +103,28 @@ final class TeamController
                             'Care team sync is not available on this OpenEMR database schema.',
                         ]);
                     }
+                    $this->storeSyncFlash($teamId, $result['care_team_sync'], CareTeamSyncFlash::CONTEXT_PULL_SYNC);
                     return $this->redirect($teamId, 'care_team_pulled');
+                case 'retry_care_team_sync':
+                    $retryIds = $post['retry_pid'] ?? [];
+                    if (!is_array($retryIds)) {
+                        $retryIds = [];
+                    }
+                    $context = $this->text($post['retry_context'] ?? CareTeamSyncFlash::CONTEXT_TEAM_SYNC);
+                    if ($context !== CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP) {
+                        $context = CareTeamSyncFlash::CONTEXT_TEAM_SYNC;
+                    }
+                    $batch = $this->admin->retryCareTeamSync($teamId, $retryIds, $context);
+                    if (!$batch->isFullSuccess()) {
+                        $this->storeSyncFlash($teamId, $batch, $context);
+                    }
+                    if (
+                        $context === CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP
+                        && $this->batchOnlyTeamActiveAgainFailures($batch)
+                    ) {
+                        return $this->redirect($teamId, 'care_team_active_retry_skipped');
+                    }
+                    return $this->redirect($teamId, 'care_team_sync_retried');
                 default:
                     return $this->get($teamId, ['team_id' => $teamId], ['Unknown action.']);
             }
@@ -137,6 +163,7 @@ final class TeamController
         $team = $teamId > 0 ? $this->admin->find($teamId) : null;
         $userQuery = trim($this->text($query['user_q'] ?? ''));
         $patientQuery = trim($this->text($query['patient_q'] ?? ''));
+        $syncFlash = $team !== null ? CareTeamSyncFlash::consume((int) $team['id']) : null;
         $body = $this->templates->render('teams.html.twig', [
             'csrf' => $this->csrf->token(),
             'teams' => $teams,
@@ -151,6 +178,7 @@ final class TeamController
             'teamPatientCount' => $team === null ? 0 : $this->admin->activePatientCount($team['id']),
             'errors' => $errors,
             'notice' => $this->notice($this->text($query['notice'] ?? '')),
+            'syncWarning' => $syncFlash === null ? null : $this->syncWarningView($syncFlash),
             'joinConfirm' => $joinConfirm,
         ]);
         return new PageResult('Provider Teams', $body);
@@ -176,13 +204,110 @@ final class TeamController
             'patient_unassigned' => 'Patient unassigned. Past visits stay on the dashboard.',
             'order_saved' => 'Patient order saved.',
             'join_date_saved' => 'Team join date saved.',
-            'care_team_pulled' => 'Provider team staff updated from the patient care team. Care teams refreshed for all patients on this team.',
+            'care_team_pulled' => 'Provider team staff updated from the patient care team.',
+            'care_team_sync_retried' => 'Care team sync retry finished.',
+            'care_team_active_retry_skipped' => 'This team is active again, so module-added care team members were not removed.',
             default => '',
         };
         if ($text === '') {
             return '';
         }
         return function_exists('xl') ? xl($text) : $text;
+    }
+
+    private function storeSyncFlash(int $teamId, CareTeamSyncBatchResult $batch, string $context): void
+    {
+        if ($batch->attempted === 0) {
+            return;
+        }
+        if ($batch->isFullSuccess()) {
+            return;
+        }
+        CareTeamSyncFlash::store($teamId, $batch, $context);
+    }
+
+    private function batchOnlyTeamActiveAgainFailures(CareTeamSyncBatchResult $batch): bool
+    {
+        if ($batch->attempted === 0 || $batch->failed === []) {
+            return false;
+        }
+        $expected = CareTeamSyncFailureMessage::teamActiveAgain();
+        foreach ($batch->failed as $row) {
+            if (($row['reason'] ?? '') !== $expected) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * @param array{team_id: int, context: string, result: array<string, mixed>} $flash
+     * @return array{
+     *   headline: string,
+     *   failed: list<array{pid: int, name: string, pubpid: string, reason: string, demographics_url: string}>,
+     *   retry_pids: list<int>,
+     *   retry_context: string,
+     *   retry_button_label: string,
+     *   team_id: int
+     * }
+     */
+    private function syncWarningView(array $flash): array
+    {
+        $context = (string) ($flash['context'] ?? CareTeamSyncFlash::CONTEXT_TEAM_SYNC);
+        $result = is_array($flash['result'] ?? null) ? $flash['result'] : [];
+        $attempted = (int) ($result['attempted'] ?? 0);
+        $succeeded = (int) ($result['succeeded'] ?? 0);
+        $failedRows = is_array($result['failed'] ?? null) ? $result['failed'] : [];
+        $failed = [];
+        $retryPids = [];
+        foreach ($failedRows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $pid = (int) ($row['pid'] ?? 0);
+            if ($pid <= 0) {
+                continue;
+            }
+            $retryPids[] = $pid;
+            $failed[] = [
+                'pid' => $pid,
+                'name' => (string) ($row['name'] ?? ('Patient ' . $pid)),
+                'pubpid' => (string) ($row['pubpid'] ?? ''),
+                'reason' => (string) ($row['reason'] ?? ''),
+                'demographics_url' => WebPaths::patientDemographics($pid),
+            ];
+        }
+
+        return [
+            'headline' => $this->formatUpdatedPatientsHeadline($succeeded, $attempted),
+            'failed' => $failed,
+            'retry_pids' => $retryPids,
+            'retry_context' => $context,
+            'retry_button_label' => $this->retryButtonLabel($context, count($retryPids)),
+            'team_id' => (int) ($flash['team_id'] ?? 0),
+        ];
+    }
+
+    private function retryButtonLabel(string $context, int $patientCount): string
+    {
+        if ($context === CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP) {
+            $template = 'Retry removing staff from %1 patients';
+            if (function_exists('xl')) {
+                return sprintf(xl($template), (string) $patientCount);
+            }
+            return sprintf($template, $patientCount);
+        }
+        $text = 'Retry failed';
+        return function_exists('xl') ? xl($text) : $text;
+    }
+
+    private function formatUpdatedPatientsHeadline(int $succeeded, int $attempted): string
+    {
+        $template = 'Updated %1 of %2 patients';
+        if (function_exists('xl')) {
+            return sprintf(xl($template), (string) $succeeded, (string) $attempted);
+        }
+        return sprintf($template, $succeeded, $attempted);
     }
 
     private function text(mixed $value): string

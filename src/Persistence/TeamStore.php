@@ -205,6 +205,29 @@ class TeamStore
         return array_map(fn (array $row): array => $this->mapPatient($row), $rows);
     }
 
+    /**
+     * @return array{pid: int, name: string, pubpid: string}
+     */
+    public function patientDisplay(int $pid): array
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT pid, fname, lname, pubpid FROM patient_data WHERE pid = ?',
+            [$pid]
+        );
+        if (!is_array($row)) {
+            return [
+                'pid' => $pid,
+                'name' => 'Patient ' . $pid,
+                'pubpid' => '',
+            ];
+        }
+        return [
+            'pid' => $pid,
+            'name' => PersonName::lastCommaFirst($row['lname'] ?? '', $row['fname'] ?? '', 'Patient ' . $pid),
+            'pubpid' => (string) ($row['pubpid'] ?? ''),
+        ];
+    }
+
     public function assignPatient(int $teamId, int $pid): string
     {
         return $this->transaction(function () use ($teamId, $pid): string {

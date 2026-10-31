@@ -10,8 +10,10 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
+use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
 use OpenEMR\Modules\ProviderTeams\Domain\ClinicTime;
 use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
+use OpenEMR\Modules\ProviderTeams\Http\CareTeamSyncFlash;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
@@ -68,9 +70,10 @@ final class TeamAdmin
         return $this->teams->create($name, $notes, $active);
     }
 
-    public function update(int $teamId, string $name, string $notes, bool $active): void
+    public function update(int $teamId, string $name, string $notes, bool $active): ?CareTeamSyncBatchResult
     {
-        if ($this->teams->find($teamId) === null) {
+        $existing = $this->teams->find($teamId);
+        if ($existing === null) {
             throw new TeamRuleException('That team was not found.');
         }
         $name = $this->cleanName($name);
@@ -78,7 +81,12 @@ final class TeamAdmin
         if ($this->teams->nameTaken($name, $teamId)) {
             throw new TeamRuleException('A team with that name already exists.');
         }
+        $wasActive = (int) $existing['active'] === 1;
         $this->teams->update($teamId, $name, $notes, $active);
+        if ($wasActive && !$active) {
+            return $this->careTeamSync->clearModuleCareTeamForAllPatients($teamId);
+        }
+        return null;
     }
 
     public function addMember(int $teamId, int $userId): void
@@ -122,7 +130,14 @@ final class TeamAdmin
     }
 
     /**
-     * @return array{team_id: int, team_name: string, patient_count: int, added: int, removed: int}|null
+     * @return array{
+     *   team_id: int,
+     *   team_name: string,
+     *   patient_count: int,
+     *   added: int,
+     *   removed: int,
+     *   care_team_sync: CareTeamSyncBatchResult
+     * }|null
      */
     public function pullCareTeamFromPatient(int $teamId, int $pid): ?array
     {
@@ -132,6 +147,30 @@ final class TeamAdmin
             throw new TeamRuleException('That patient is not on this team.');
         }
         return $this->careTeamSync->applyPatientCareTeamToProviderTeam($pid);
+    }
+
+    /**
+     * @param list<int|string> $patientIds
+     */
+    public function retryCareTeamSync(int $teamId, array $patientIds, string $context): CareTeamSyncBatchResult
+    {
+        $this->requireTeam($teamId);
+        $clean = [];
+        foreach ($this->parseStrictPatientIds($patientIds) as $pid) {
+            $assignment = $this->teams->activeTeamForPatient($pid);
+            if ($assignment === null || (int) $assignment['team_id'] !== $teamId) {
+                continue;
+            }
+            $clean[] = $pid;
+        }
+        if ($context === CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP) {
+            return $this->careTeamSync->clearModuleCareTeamForPatients($teamId, $clean, true);
+        }
+        $team = $this->teams->find($teamId);
+        if ($team !== null && (int) $team['active'] !== 1) {
+            return $this->careTeamSync->clearModuleCareTeamForPatients($teamId, $clean, true);
+        }
+        return $this->careTeamSync->syncTeamToPatients($teamId, $clean);
     }
 
     public function careTeamSyncAvailable(): bool
@@ -256,5 +295,29 @@ final class TeamAdmin
             throw new TeamRuleException('Notes must be 2000 characters or fewer.');
         }
         return $notes;
+    }
+
+    /**
+     * @param list<int|string> $patientIds
+     * @return list<int>
+     */
+    private function parseStrictPatientIds(array $patientIds): array
+    {
+        $clean = [];
+        foreach ($patientIds as $patientId) {
+            if (!is_scalar($patientId)) {
+                continue;
+            }
+            $raw = trim((string) $patientId);
+            if ($raw === '' || !ctype_digit($raw)) {
+                continue;
+            }
+            $pid = (int) $raw;
+            if ($pid <= 0) {
+                continue;
+            }
+            $clean[$pid] = $pid;
+        }
+        return array_values($clean);
     }
 }

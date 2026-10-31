@@ -1,0 +1,98 @@
+<link rel="stylesheet" href="{{ stylesheet|e('html_attr') }}">
+<div id="provider-teams-exclusions-fallback-host" class="provider-teams-exclusions-fallback-host col-12 px-2 mb-3" aria-live="polite"></div>
+<template id="provider-teams-care-team-exclusions-template">
+    <div class="provider-teams-care-team-exclusions mt-3 pt-2 border-top" style="min-height: {{ panelMinHeightPx|attr }}px">
+        <p class="text-muted small mb-2">{{ labels.heading|text }}</p>
+        <p class="small mb-2">{{ labels.teamLabel|text }}: <strong>{{ teamName|text }}</strong></p>
+        <ul class="list-unstyled mb-0">
+            {% for member in members %}
+                <li class="provider-teams-excluded-member d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <span class="text-muted">{{ member.name|text }}</span>
+                    <span class="badge badge-secondary provider-teams-removed-tag">{{ labels.removedTag|text }}</span>
+                    {% if canRestore %}
+                        <form method="post" action="{{ restoreUrl|e('html_attr') }}" class="d-inline mb-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrfToken|attr }}">
+                            <input type="hidden" name="action" value="restore_exclusion">
+                            <input type="hidden" name="pid" value="{{ pid|attr }}">
+                            <input type="hidden" name="team_id" value="{{ teamId|attr }}">
+                            <input type="hidden" name="user_id" value="{{ member.user_id|attr }}">
+                            <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">{{ labels.addBack|text }}</button>
+                        </form>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</template>
+<script>
+(function () {
+    'use strict';
+    var logPrefix = 'Provider Teams:';
+    var cardSelectors = {{ cardSelector|js_escape }};
+    var template = document.getElementById('provider-teams-care-team-exclusions-template');
+    var fallbackHost = document.getElementById('provider-teams-exclusions-fallback-host');
+    if (!template || !template.content) {
+        return;
+    }
+
+    function findCardBody() {
+        var parts = cardSelectors.split(',');
+        for (var i = 0; i < parts.length; i++) {
+            var node = document.querySelector(parts[i].trim());
+            if (node) {
+                return node;
+            }
+        }
+        return null;
+    }
+
+    function revealPanel(root) {
+        if (!root) {
+            return;
+        }
+        root.classList.remove('provider-teams-exclusions-pre-reveal');
+    }
+
+    var panel = template.content.cloneNode(true);
+    template.remove();
+    var panelRoot = panel.querySelector('.provider-teams-care-team-exclusions');
+    if (panelRoot) {
+        panelRoot.classList.add('provider-teams-exclusions-pre-reveal');
+    }
+
+    var cardBody = findCardBody();
+    if (cardBody) {
+        cardBody.appendChild(panel);
+        requestAnimationFrame(function () {
+            revealPanel(panelRoot);
+        });
+        if (fallbackHost && fallbackHost.parentNode) {
+            fallbackHost.parentNode.removeChild(fallbackHost);
+        }
+        return;
+    }
+
+    console.warn(
+        logPrefix + ' Care Team card not found for selectors: ' + cardSelectors
+        + '. Showing provider-team exclusions below demographics.'
+    );
+
+    if (fallbackHost) {
+        fallbackHost.classList.add('is-visible');
+        fallbackHost.appendChild(panel);
+        requestAnimationFrame(function () {
+            revealPanel(panelRoot);
+        });
+        return;
+    }
+
+    var anchor = document.querySelector('.patient-demographic') || document.body;
+    var wrap = document.createElement('div');
+    wrap.className = 'provider-teams-exclusions-fallback-host is-visible col-12 px-2 mb-3';
+    wrap.appendChild(panel);
+    anchor.appendChild(wrap);
+    requestAnimationFrame(function () {
+        revealPanel(panelRoot);
+    });
+})();
+</script>
