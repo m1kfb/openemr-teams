@@ -11,9 +11,12 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
 use OpenEMR\Modules\ProviderTeams\Domain\CareTeamSyncBatchResult;
+use OpenEMR\Modules\ProviderTeams\Domain\ClinicTime;
+use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Http\CareTeamSyncFlash;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
+use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
 
 final class TeamAdmin
 {
@@ -21,6 +24,7 @@ final class TeamAdmin
         private readonly TeamStore $teams,
         private readonly DirectoryStore $directory,
         private readonly CareTeamSync $careTeamSync,
+        private readonly VisitStore $visits,
     ) {
     }
 
@@ -49,7 +53,7 @@ final class TeamAdmin
     }
 
     /**
-     * @return list<array{pid: int, name: string, pubpid: string, position: int}>
+     * @return list<array{pid: int, name: string, pubpid: string, position: int, assigned_at: string, assigned_at_input: string}>
      */
     public function patients(int $teamId): array
     {
@@ -197,6 +201,50 @@ final class TeamAdmin
             $clean[$pid] = max(0, (int) $position);
         }
         $this->teams->savePositions($teamId, $clean);
+    }
+
+    public function updatePatientAssignedAt(
+        int $teamId,
+        int $pid,
+        string $rawAssignedAt,
+        bool $confirmed,
+        ?int $confirmAffectedCount = null,
+    ): void {
+        $this->requireTeam($teamId);
+        if ($pid <= 0) {
+            throw new TeamRuleException('That patient was not found.');
+        }
+        $assignment = $this->teams->findActivePatientAssignment($teamId, $pid);
+        if ($assignment === null) {
+            throw new TeamRuleException('That patient is not on this team.');
+        }
+        $assignedAt = DateSpan::assignedAt($rawAssignedAt);
+        if ($assignedAt === null) {
+            throw new TeamRuleException('Enter a valid team join date and time.');
+        }
+        $assignedAtDt = ClinicTime::parseStored($assignedAt);
+        if ($assignedAtDt === null) {
+            throw new TeamRuleException('Enter a valid team join date and time.');
+        }
+        if ($assignedAtDt > ClinicTime::now()) {
+            throw new TeamRuleException('Team join date cannot be in the future.');
+        }
+        $stored = ClinicTime::formatStored($assignedAtDt);
+        $currentDt = ClinicTime::parseStored($assignment['assigned_at']);
+        if ($currentDt !== null && $assignedAtDt > $currentDt) {
+            $affected = $this->visits->countVisitsExcludedByJoin($teamId, $pid, $stored);
+            if ($affected > 0 && !$confirmed) {
+                throw new TeamJoinDateConfirmationRequired($affected, $pid, $rawAssignedAt);
+            }
+            if ($confirmed && $affected > 0) {
+                if ($confirmAffectedCount === null || $confirmAffectedCount !== $affected) {
+                    throw new TeamRuleException(
+                        'The affected visit count changed. Save the join date again and confirm.'
+                    );
+                }
+            }
+        }
+        $this->teams->updateAssignedAt($teamId, $pid, $stored);
     }
 
     /**

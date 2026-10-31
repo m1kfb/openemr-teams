@@ -59,4 +59,46 @@ final class DateSpan
         }
         return $date->format('d/m/Y');
     }
+
+    /**
+     * Normalizes a team join timestamp from a date or datetime-local field.
+     *
+     * Parsed in the OpenEMR clinic timezone (see ClinicTime); stored as Y-m-d H:i:s.
+     */
+    public static function assignedAt(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        $zone = ClinicTime::timezone();
+        if (str_contains($value, 'T')) {
+            $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $value, $zone);
+            $errors = \DateTimeImmutable::getLastErrors();
+            if (
+                $dateTime === false
+                || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            ) {
+                return null;
+            }
+            return ClinicTime::formatStored($dateTime);
+        }
+        $day = self::day($value);
+        if ($day === null) {
+            return null;
+        }
+        return ClinicTime::formatStored(new \DateTimeImmutable($day->format('Y-m-d') . ' 00:00:00', $zone));
+    }
+
+    /**
+     * Value for an HTML datetime-local input from a stored datetime (clinic timezone).
+     */
+    public static function assignedAtInputValue(string $stored): string
+    {
+        $dateTime = ClinicTime::parseStored($stored);
+        if ($dateTime === null) {
+            return '';
+        }
+        return $dateTime->format('Y-m-d\TH:i');
+    }
 }

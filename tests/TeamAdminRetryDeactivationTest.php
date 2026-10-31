@@ -14,6 +14,7 @@ use OpenEMR\Modules\ProviderTeams\Http\CareTeamSyncFlash;
 use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamBridge;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
+use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
 use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
 use OpenEMR\Modules\ProviderTeams\Service\CareTeamSyncFailureMessage;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
@@ -34,7 +35,9 @@ final class TeamAdminRetryDeactivationTest extends TestCase
         $teams->method('find')->willReturn(['id' => 1, 'name' => 'T', 'active' => 0, 'notes' => '']);
         $teams->method('activeTeamForPatient')->willReturn(['team_id' => 1, 'team_name' => 'T']);
 
-        $admin = new TeamAdmin($teams, new DirectoryStore(), $sync);
+        $visits = $this->createMock(VisitStore::class);
+
+        $admin = new TeamAdmin($teams, new DirectoryStore(), $sync, $visits);
         $admin->retryCareTeamSync(1, [5, 6], CareTeamSyncFlash::CONTEXT_DEACTIVATION_CLEANUP);
     }
 
@@ -50,7 +53,9 @@ final class TeamAdminRetryDeactivationTest extends TestCase
         $teams->method('find')->willReturn(['id' => 1, 'name' => 'T', 'active' => 0, 'notes' => '']);
         $teams->method('activeTeamForPatient')->willReturn(['team_id' => 1, 'team_name' => 'T']);
 
-        $admin = new TeamAdmin($teams, new DirectoryStore(), $sync);
+        $visits = $this->createMock(VisitStore::class);
+
+        $admin = new TeamAdmin($teams, new DirectoryStore(), $sync, $visits);
         $admin->retryCareTeamSync(1, [5], CareTeamSyncFlash::CONTEXT_TEAM_SYNC);
     }
 }

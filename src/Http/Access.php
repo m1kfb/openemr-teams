@@ -41,6 +41,6 @@ final class Access
 
     public function userId(): int
     {
-        return (int) ($_SESSION['authUserID'] ?? 0);
+        return SessionUserId::current();
     }
 }
