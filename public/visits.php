@@ -20,4 +20,9 @@ if ($result->redirect !== null) {
     header('Location: ' . $result->redirect);
     exit;
 }
+if ($result->json !== null) {
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($result->json, JSON_THROW_ON_ERROR);
+    exit;
+}
 HtmlPage::emit($result->title, $result->body, Module::stylesheetPath());

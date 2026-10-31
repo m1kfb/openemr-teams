@@ -12,6 +12,7 @@ namespace OpenEMR\Modules\ProviderTeams\Http;
 
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
+use OpenEMR\Modules\ProviderTeams\Service\TeamJoinDateConfirmationRequired;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
 
 final class TeamController
@@ -79,6 +80,16 @@ final class TeamController
                     $positions = $post['position'] ?? [];
                     $this->admin->saveOrder($teamId, is_array($positions) ? $positions : []);
                     return $this->redirect($teamId, 'order_saved');
+                case 'update_patient_join':
+                    $confirmCount = $post['confirm_affected_count'] ?? null;
+                    $this->admin->updatePatientAssignedAt(
+                        $teamId,
+                        $this->int($post['pid'] ?? 0),
+                        $this->text($post['assigned_at'] ?? ''),
+                        isset($post['confirm_affected_visits']),
+                        is_scalar($confirmCount) && is_numeric($confirmCount) ? (int) $confirmCount : null
+                    );
+                    return $this->redirect($teamId, 'join_date_saved');
                 case 'pull_care_team':
                     $pid = $this->int($post['pid'] ?? 0);
                     $result = $this->admin->pullCareTeamFromPatient($teamId, $pid);
@@ -91,6 +102,21 @@ final class TeamController
                 default:
                     return $this->get($teamId, ['team_id' => $teamId], ['Unknown action.']);
             }
+        } catch (TeamJoinDateConfirmationRequired $exception) {
+            return $this->get(
+                $teamId,
+                [
+                    'team_id' => $teamId,
+                    'user_q' => $this->text($post['user_q'] ?? ''),
+                    'patient_q' => $this->text($post['patient_q'] ?? ''),
+                ],
+                [$exception->getMessage()],
+                [
+                    'pid' => $exception->pid,
+                    'assigned_at' => $exception->assignedAtInput,
+                    'affected' => $exception->affectedVisitCount,
+                ]
+            );
         } catch (TeamRuleException $exception) {
             return $this->get($teamId, [
                 'team_id' => $teamId,
@@ -103,8 +129,9 @@ final class TeamController
     /**
      * @param array<string, mixed> $query
      * @param list<string> $errors
+     * @param array{pid?: int, assigned_at?: string, affected?: int}|null $joinConfirm
      */
-    private function get(int $teamId, array $query, array $errors): PageResult
+    private function get(int $teamId, array $query, array $errors, ?array $joinConfirm = null): PageResult
     {
         $teams = $this->admin->listTeams();
         $team = $teamId > 0 ? $this->admin->find($teamId) : null;
@@ -124,6 +151,7 @@ final class TeamController
             'teamPatientCount' => $team === null ? 0 : $this->admin->activePatientCount($team['id']),
             'errors' => $errors,
             'notice' => $this->notice($this->text($query['notice'] ?? '')),
+            'joinConfirm' => $joinConfirm,
         ]);
         return new PageResult('Provider Teams', $body);
     }
@@ -147,6 +175,7 @@ final class TeamController
             'patient_already' => 'This patient is already on the team.',
             'patient_unassigned' => 'Patient unassigned. Past visits stay on the dashboard.',
             'order_saved' => 'Patient order saved.',
+            'join_date_saved' => 'Team join date saved.',
             'care_team_pulled' => 'Provider team staff updated from the patient care team. Care teams refreshed for all patients on this team.',
             default => '',
         };

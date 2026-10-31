@@ -14,7 +14,7 @@ use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Modules\ProviderTeams\Domain\PersonName;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitStatus;
 
-final class VisitStore
+class VisitStore
 {
     /**
      * Patients assigned on any date in the range, plus anyone who already has a call in the range.
@@ -121,21 +121,44 @@ final class VisitStore
     }
 
     /**
+     * Visits that would no longer appear once the join datetime is moved later.
+     */
+    public function countVisitsExcludedByJoin(int $teamId, int $pid, string $assignedAt): int
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT COUNT(*) AS cnt
+             FROM provider_team_visits
+             WHERE team_id = ? AND pid = ?
+               AND ? >= DATE_ADD(visit_date, INTERVAL 1 DAY)',
+            [$teamId, $pid, $assignedAt]
+        );
+        return is_array($row) ? (int) $row['cnt'] : 0;
+    }
+
+    /**
      * @param list<int> $staffIds
      * @param list<array{pid: int, period: string, status: string, timeIn: ?int, timeOut: ?int}> $slots
      */
-    public function saveDay(int $teamId, string $date, array $staffIds, array $slots, int $recordedBy): void
-    {
-        $this->transaction(function () use ($teamId, $date, $staffIds, $slots, $recordedBy): void {
-            QueryUtils::sqlStatementThrowException(
-                'DELETE FROM provider_team_day_staff WHERE team_id = ? AND visit_date = ?',
-                [$teamId, $date]
-            );
-            foreach ($staffIds as $userId) {
-                QueryUtils::sqlInsert(
-                    'INSERT INTO provider_team_day_staff (team_id, visit_date, user_id) VALUES (?, ?, ?)',
-                    [$teamId, $date, $userId]
+    public function saveDay(
+        int $teamId,
+        string $date,
+        array $staffIds,
+        array $slots,
+        int $recordedBy,
+        bool $updateStaff = true,
+    ): void {
+        $this->transaction(function () use ($teamId, $date, $staffIds, $slots, $recordedBy, $updateStaff): void {
+            if ($updateStaff) {
+                QueryUtils::sqlStatementThrowException(
+                    'DELETE FROM provider_team_day_staff WHERE team_id = ? AND visit_date = ?',
+                    [$teamId, $date]
                 );
+                foreach ($staffIds as $userId) {
+                    QueryUtils::sqlInsert(
+                        'INSERT INTO provider_team_day_staff (team_id, visit_date, user_id) VALUES (?, ?, ?)',
+                        [$teamId, $date, $userId]
+                    );
+                }
             }
             foreach ($slots as $slot) {
                 if ($slot['status'] === VisitStatus::BLANK) {

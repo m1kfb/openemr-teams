@@ -36,15 +36,15 @@ final class VisitCsv
         ]);
         foreach ($rows as $row) {
             $line = [
-                (string) $row['patientName'],
-                (string) $row['dateDisplay'],
+                CsvCellSanitizer::sanitize((string) $row['patientName']),
+                CsvCellSanitizer::sanitize((string) $row['dateDisplay']),
             ];
             foreach (VisitPeriod::all() as $period) {
                 $slot = $row['slots'][$period];
-                $line[] = $this->cell($slot, 'timeInDisplay');
-                $line[] = $this->cell($slot, 'timeOutDisplay');
+                $line[] = CsvCellSanitizer::sanitize($this->cell($slot, 'timeInDisplay'));
+                $line[] = CsvCellSanitizer::sanitize($this->cell($slot, 'timeOutDisplay'));
             }
-            $line[] = (string) $row['staffLabel'];
+            $line[] = CsvCellSanitizer::sanitize((string) $row['staffLabel']);
             fputcsv($handle, $line);
         }
         rewind($handle);

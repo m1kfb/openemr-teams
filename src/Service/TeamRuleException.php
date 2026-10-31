@@ -10,6 +10,6 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
-final class TeamRuleException extends \RuntimeException
+class TeamRuleException extends \RuntimeException
 {
 }

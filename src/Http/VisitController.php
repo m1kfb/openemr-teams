@@ -12,7 +12,11 @@ namespace OpenEMR\Modules\ProviderTeams\Http;
 
 use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitExportFormat;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitPeriod;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveJson;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveMode;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
 use OpenEMR\Modules\ProviderTeams\Service\VisitBoard;
 
@@ -69,10 +73,10 @@ final class VisitController
         }
         $slug = preg_replace('/[^A-Za-z0-9_-]+/', '-', $team['name']) ?: 'team';
         $filename = $slug . '-visits-' . $from . '-to-' . $to . '.csv';
-        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Type: ' . VisitExportFormat::CONTENT_TYPE);
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('X-Content-Type-Options: nosniff');
-        echo "\xEF\xBB\xBF" . $csv;
+        echo VisitExportFormat::BOM . $csv;
         exit;
     }
 
@@ -85,6 +89,8 @@ final class VisitController
         $date = is_string($post['date'] ?? null) ? $post['date'] : '';
         $staff = $post['staff'] ?? [];
         $slots = $post['slot'] ?? [];
+        $dirtyPatients = is_array($post['dirty'] ?? null) ? $post['dirty'] : [];
+        $staffDirty = VisitSaveScope::shouldUpdateStaff($post['staff_dirty'] ?? null);
         $staffIds = [];
         if (is_array($staff)) {
             foreach ($staff as $staffId) {
@@ -94,13 +100,28 @@ final class VisitController
             }
         }
         $rawSlots = is_array($slots) ? $slots : [];
-        $errors = $this->board->saveDay($teamId, $date, $staffIds, $rawSlots, $this->access->userId());
+        $rowSave = VisitSaveMode::isRowSave($post);
+        $errors = $this->board->saveDay(
+            $teamId,
+            $date,
+            $staffIds,
+            $rawSlots,
+            $this->access->userId(),
+            $dirtyPatients,
+            $staffDirty
+        );
         if ($errors === []) {
+            if ($rowSave) {
+                return new PageResult('', '', null, VisitSaveJson::success());
+            }
             return new PageResult('Visit dashboard', '', 'visits.php?' . http_build_query([
                 'team_id' => $teamId,
                 'date' => $date,
                 'notice' => 'saved',
             ]));
+        }
+        if ($rowSave) {
+            return new PageResult('', '', null, VisitSaveJson::failure($errors));
         }
         return $this->show(
             ['team_id' => $teamId, 'date' => $date, 'mode' => 'day'],
@@ -135,6 +156,7 @@ final class VisitController
         $rows = [];
         $members = [];
         $selectedStaff = [];
+        $dayEmptyReason = null;
         if ($team !== null && $mode === 'day') {
             try {
                 $day = $this->board->day($team['id'], $date, $staffOverride, $rawSlots);
@@ -143,6 +165,9 @@ final class VisitController
                 $selectedStaff = $day['selectedStaff'];
             } catch (\InvalidArgumentException $exception) {
                 $errors[] = $exception->getMessage();
+            }
+            if ($rows === [] && $errors === []) {
+                $dayEmptyReason = $this->board->dayEmptyReason($team['id'], $date);
             }
         }
         if ($team !== null && $mode === 'range') {
@@ -179,6 +204,8 @@ final class VisitController
             'errors' => $errors,
             'notice' => $this->notice($this->text($query['notice'] ?? '')),
             'exportUrl' => 'export.php?' . http_build_query($exportQuery),
+            'dayEmptyReason' => $dayEmptyReason,
+            'teamsPageUrl' => 'teams.php' . ($team !== null ? '?team_id=' . (int) $team['id'] : ''),
         ]);
         return new PageResult('Visit dashboard', $body);
     }

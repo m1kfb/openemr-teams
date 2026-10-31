@@ -11,10 +11,11 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Persistence;
 
 use OpenEMR\Common\Database\QueryUtils;
+use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\PersonName;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
 
-final class TeamStore
+class TeamStore
 {
     /**
      * @return list<array{id: int, name: string, active: int, notes: string, member_count: int, patient_count: int}>
@@ -189,12 +190,12 @@ final class TeamStore
     }
 
     /**
-     * @return list<array{pid: int, name: string, pubpid: string, position: int}>
+     * @return list<array{pid: int, name: string, pubpid: string, position: int, assigned_at: string, assigned_at_input: string}>
      */
     public function activePatients(int $teamId): array
     {
         $rows = QueryUtils::fetchRecords(
-            'SELECT a.pid, a.position, p.fname, p.lname, p.pubpid
+            'SELECT a.pid, a.position, a.assigned_at, p.fname, p.lname, p.pubpid
              FROM provider_team_patients a
              INNER JOIN patient_data p ON p.pid = a.pid
              WHERE a.team_id = ? AND a.active = 1
@@ -277,6 +278,29 @@ final class TeamStore
         }
     }
 
+    public function updateAssignedAt(int $teamId, int $pid, string $assignedAt): void
+    {
+        QueryUtils::sqlStatementThrowException(
+            'UPDATE provider_team_patients SET assigned_at = ? WHERE team_id = ? AND pid = ? AND active = 1',
+            [$assignedAt, $teamId, $pid]
+        );
+    }
+
+    /**
+     * @return array{assigned_at: string}|null
+     */
+    public function findActivePatientAssignment(int $teamId, int $pid): ?array
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT assigned_at FROM provider_team_patients WHERE team_id = ? AND pid = ? AND active = 1',
+            [$teamId, $pid]
+        );
+        if (!is_array($row)) {
+            return null;
+        }
+        return ['assigned_at' => (string) ($row['assigned_at'] ?? '')];
+    }
+
     private function nextPosition(int $teamId): int
     {
         $row = QueryUtils::querySingleRow(
@@ -290,16 +314,19 @@ final class TeamStore
 
     /**
      * @param array<string, mixed> $row
-     * @return array{pid: int, name: string, pubpid: string, position: int}
+     * @return array{pid: int, name: string, pubpid: string, position: int, assigned_at: string, assigned_at_input: string}
      */
     private function mapPatient(array $row): array
     {
         $pid = (int) $row['pid'];
+        $assignedAt = (string) ($row['assigned_at'] ?? '');
         return [
             'pid' => $pid,
             'name' => PersonName::lastCommaFirst($row['lname'] ?? '', $row['fname'] ?? '', 'Patient ' . $pid),
             'pubpid' => (string) ($row['pubpid'] ?? ''),
             'position' => (int) ($row['position'] ?? 0),
+            'assigned_at' => $assignedAt,
+            'assigned_at_input' => DateSpan::assignedAtInputValue($assignedAt),
         ];
     }
 

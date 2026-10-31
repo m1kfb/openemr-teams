@@ -68,16 +68,22 @@
 
 {% if team is null %}
     <div class="alert alert-info no-print">{{ 'Choose a team to see its visits.'|xlt }}</div>
+{% elseif rows is empty and errors is empty and dayEmptyReason == 'joined_later' %}
+    <div class="alert alert-info">
+        {{ 'Patients are on this team, but their team join date is after the selected day. Visits cannot be shown until the join date is on or before that day.'|xlt }}
+        <a href="{{ teamsPageUrl|attr }}">{{ 'Edit team join dates'|xlt }}</a>
+    </div>
 {% elseif rows is empty and errors is empty %}
     <div class="alert alert-info">{{ 'No patients are on this team for these dates. Assign patients from the Teams page.'|xlt }}</div>
 {% else %}
-    <form method="post">
+    <form method="post" id="visit-day-form" class="visit-day-form" data-save-row-label="{{ 'Save row'|xla }}" data-retry-row-label="{{ 'Retry'|xla }}" data-row-save-failed="{{ 'Could not save this row. Fix any errors and try again.'|xla }}">
         <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
         <input type="hidden" name="team_id" value="{{ team.id|attr }}">
         <input type="hidden" name="date" value="{{ date|attr }}">
+        <input type="hidden" name="staff_dirty" id="staff-dirty" value="0">
 
         {% if editable %}
-            <div class="card mb-3 no-print">
+            <div class="card mb-3 no-print" id="staff-on-duty">
                 <div class="card-header">{{ 'Staff on duty'|xlt }}</div>
                 <div class="card-body">
                     {% if members is empty %}
@@ -85,7 +91,7 @@
                     {% else %}
                         {% for member in members %}
                             <div class="form-check form-check-inline">
-                                <input class="form-check-input" type="checkbox" id="staff-{{ member.user_id }}" name="staff[]" value="{{ member.user_id|attr }}" {% if member.user_id in selectedStaff %}checked{% endif %}>
+                                <input class="form-check-input staff-on-duty-input" type="checkbox" id="staff-{{ member.user_id }}" name="staff[]" value="{{ member.user_id|attr }}" {% if member.user_id in selectedStaff %}checked{% endif %}>
                                 <label class="form-check-label" for="staff-{{ member.user_id }}">{{ member.name|text }}</label>
                             </div>
                         {% endfor %}
@@ -104,12 +110,18 @@
                             <th>{{ period.label|text }}</th>
                         {% endfor %}
                         <th>{{ 'STAFF'|xlt }}</th>
+                        {% if editable %}<th class="no-print">{{ 'Save'|xlt }}</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in rows %}
-                        <tr>
-                            <td>{{ row.patientName|text }}</td>
+                        <tr class="visit-patient-row" data-pid="{{ row.pid|attr }}">
+                            <td>
+                                {{ row.patientName|text }}
+                                {% if editable %}
+                                    <input type="hidden" name="dirty[{{ row.pid }}]" value="0" class="patient-dirty-flag">
+                                {% endif %}
+                            </td>
                             <td>{{ row.dateDisplay|text }}</td>
                             {% for period in periods %}
                                 {% set slot = row.slots[period.key] %}
@@ -130,7 +142,7 @@
                                             {% if slot.status == 'missed' %}
                                                 <span class="missed-label">{{ 'Missed'|xlt }}</span>
                                             {% elseif slot.timeInDisplay %}
-                                                {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
+                                                {{ slot.timeInDisplay|text }} - {{ slot.timeOutDisplay|text }}
                                                 {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}
                                             {% endif %}
                                         </div>
@@ -138,13 +150,19 @@
                                         {% if slot.status == 'missed' %}
                                             <span class="missed-label">{{ 'Missed'|xlt }}</span>
                                         {% elseif slot.timeInDisplay %}
-                                            {{ slot.timeInDisplay|text }} – {{ slot.timeOutDisplay|text }}
+                                            {{ slot.timeInDisplay|text }} - {{ slot.timeOutDisplay|text }}
                                             {% if slot.durationDisplay %}<span class="duration">{{ slot.durationDisplay|text }}</span>{% endif %}
                                         {% endif %}
                                     {% endif %}
                                 </td>
                             {% endfor %}
                             <td>{{ row.staffLabel|text }}</td>
+                            {% if editable %}
+                                <td class="no-print visit-row-actions">
+                                    <button class="btn btn-sm btn-outline-primary save-patient-row" type="button" data-pid="{{ row.pid|attr }}">{{ 'Save row'|xlt }}</button>
+                                    <div class="visit-row-error text-danger small" role="alert"></div>
+                                </td>
+                            {% endif %}
                         </tr>
                     {% endfor %}
                 </tbody>
@@ -152,7 +170,7 @@
         </div>
 
         {% if editable %}
-            <button class="btn btn-primary no-print" type="submit">{{ 'Save visit times'|xlt }}</button>
+            <button class="btn btn-primary no-print" id="save-all-visits" type="submit">{{ 'Save visit times'|xlt }}</button>
         {% elseif mode == 'day' and team.active != 1 %}
             <p class="text-muted no-print">{{ 'This team is inactive. Visits can be reviewed, not edited.'|xlt }}</p>
         {% elseif mode == 'day' %}
