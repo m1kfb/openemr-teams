@@ -79,6 +79,13 @@ final class TeamController
                     $positions = $post['position'] ?? [];
                     $this->admin->saveOrder($teamId, is_array($positions) ? $positions : []);
                     return $this->redirect($teamId, 'order_saved');
+                case 'update_patient_join':
+                    $this->admin->updatePatientAssignedAt(
+                        $teamId,
+                        $this->int($post['pid'] ?? 0),
+                        $this->text($post['assigned_at'] ?? '')
+                    );
+                    return $this->redirect($teamId, 'join_date_saved');
                 case 'pull_care_team':
                     $pid = $this->int($post['pid'] ?? 0);
                     $result = $this->admin->pullCareTeamFromPatient($teamId, $pid);
@@ -147,6 +154,7 @@ final class TeamController
             'patient_already' => 'This patient is already on the team.',
             'patient_unassigned' => 'Patient unassigned. Past visits stay on the dashboard.',
             'order_saved' => 'Patient order saved.',
+            'join_date_saved' => 'Team join date saved.',
             'care_team_pulled' => 'Provider team staff updated from the patient care team. Care teams refreshed for all patients on this team.',
             default => '',
         };

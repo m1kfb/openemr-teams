@@ -29,4 +29,49 @@
             }
         });
     });
+
+    var visitForm = document.getElementById("visit-day-form");
+    if (visitForm) {
+        var staffDirty = document.getElementById("staff-dirty");
+        var markStaffDirty = function () {
+            if (staffDirty) {
+                staffDirty.value = "1";
+            }
+        };
+        visitForm.querySelectorAll(".staff-on-duty-input").forEach(function (input) {
+            input.addEventListener("change", markStaffDirty);
+        });
+
+        var markPatientDirty = function (row) {
+            var flag = row.querySelector(".patient-dirty-flag");
+            if (flag) {
+                flag.value = "1";
+            }
+        };
+
+        visitForm.querySelectorAll(".visit-patient-row").forEach(function (row) {
+            row.querySelectorAll(".time-input, .missed-toggle").forEach(function (input) {
+                input.addEventListener("change", function () {
+                    markPatientDirty(row);
+                });
+                input.addEventListener("input", function () {
+                    markPatientDirty(row);
+                });
+            });
+        });
+
+        visitForm.querySelectorAll(".save-patient-row").forEach(function (button) {
+            button.addEventListener("click", function () {
+                var pid = button.getAttribute("data-pid");
+                visitForm.querySelectorAll(".patient-dirty-flag").forEach(function (flag) {
+                    flag.value = "0";
+                });
+                visitForm.querySelectorAll(".visit-patient-row").forEach(function (row) {
+                    if (row.getAttribute("data-pid") === pid) {
+                        markPatientDirty(row);
+                    }
+                });
+            });
+        });
+    }
 }());

@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Service;
 
+use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 
@@ -47,7 +48,7 @@ final class TeamAdmin
     }
 
     /**
-     * @return list<array{pid: int, name: string, pubpid: string, position: int}>
+     * @return list<array{pid: int, name: string, pubpid: string, position: int, assigned_at: string, assigned_at_input: string}>
      */
     public function patients(int $teamId): array
     {
@@ -158,6 +159,29 @@ final class TeamAdmin
             $clean[$pid] = max(0, (int) $position);
         }
         $this->teams->savePositions($teamId, $clean);
+    }
+
+    public function updatePatientAssignedAt(int $teamId, int $pid, string $rawAssignedAt): void
+    {
+        $this->requireTeam($teamId);
+        if ($pid <= 0) {
+            throw new TeamRuleException('That patient was not found.');
+        }
+        $onTeam = false;
+        foreach ($this->teams->activePatients($teamId) as $patient) {
+            if ((int) $patient['pid'] === $pid) {
+                $onTeam = true;
+                break;
+            }
+        }
+        if (!$onTeam) {
+            throw new TeamRuleException('That patient is not on this team.');
+        }
+        $assignedAt = DateSpan::assignedAt($rawAssignedAt);
+        if ($assignedAt === null) {
+            throw new TeamRuleException('Enter a valid team join date and time.');
+        }
+        $this->teams->updateAssignedAt($teamId, $pid, $assignedAt);
     }
 
     /**

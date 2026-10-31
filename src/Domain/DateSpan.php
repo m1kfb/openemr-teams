@@ -59,4 +59,51 @@ final class DateSpan
         }
         return $date->format('d/m/Y');
     }
+
+    /**
+     * Normalizes a team join timestamp from a date or datetime-local field.
+     */
+    public static function assignedAt(string $value): ?string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return null;
+        }
+        if (str_contains($value, 'T')) {
+            $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $value, new \DateTimeZone('UTC'));
+            $errors = \DateTimeImmutable::getLastErrors();
+            if (
+                $dateTime === false
+                || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))
+            ) {
+                return null;
+            }
+            return $dateTime->format('Y-m-d H:i:s');
+        }
+        $day = self::day($value);
+        if ($day === null) {
+            return null;
+        }
+        return $day->format('Y-m-d') . ' 00:00:00';
+    }
+
+    /**
+     * Value for an HTML datetime-local input from a stored datetime.
+     */
+    public static function assignedAtInputValue(string $stored): string
+    {
+        $stored = trim($stored);
+        if ($stored === '') {
+            return '';
+        }
+        $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $stored, new \DateTimeZone('UTC'));
+        if ($dateTime === false) {
+            $day = self::day(substr($stored, 0, 10));
+            if ($day === null) {
+                return '';
+            }
+            return $day->format('Y-m-d') . 'T00:00';
+        }
+        return $dateTime->format('Y-m-d\TH:i');
+    }
 }

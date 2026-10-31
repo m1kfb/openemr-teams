@@ -161,7 +161,7 @@
             <div class="card">
                 <div class="card-header">{{ 'Patients on this team'|xlt }}</div>
                 <div class="card-body">
-                    <p class="text-muted">{{ 'A patient can belong to one active team. Order is the round order on the visit dashboard. Unassigning keeps past visits.'|xlt }}</p>
+                    <p class="text-muted">{{ 'A patient can belong to one active team. Order is the round order on the visit dashboard. Team join controls the earliest date visits can be recorded; adjust it when logging visits before the assignment day. Unassigning keeps past visits.'|xlt }}</p>
                     {% if patients %}
                         <form method="post">
                             <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
@@ -172,6 +172,7 @@
                                     <tr>
                                         <th>{{ 'Order'|xlt }}</th>
                                         <th>{{ 'Patient'|xlt }}</th>
+                                        <th>{{ 'Team join'|xlt }}</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -184,6 +185,16 @@
                                             <td>
                                                 {{ patient.name|text }}
                                                 {% if patient.pubpid %}<span class="text-muted">({{ patient.pubpid|text }})</span>{% endif %}
+                                            </td>
+                                            <td style="min-width: 14rem;">
+                                                <form method="post" class="form-inline">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
+                                                    <input type="hidden" name="action" value="update_patient_join">
+                                                    <input type="hidden" name="team_id" value="{{ team.id|attr }}">
+                                                    <input type="hidden" name="pid" value="{{ patient.pid|attr }}">
+                                                    <input class="form-control form-control-sm mr-2" type="datetime-local" name="assigned_at" value="{{ patient.assigned_at_input|attr }}" required>
+                                                    <button class="btn btn-sm btn-outline-primary" type="submit">{{ 'Save'|xlt }}</button>
+                                                </form>
                                             </td>
                                             <td class="text-right">
                                                 <button class="btn btn-sm btn-outline-danger" type="submit" form="unassign-{{ patient.pid }}">{{ 'Unassign'|xlt }}</button>

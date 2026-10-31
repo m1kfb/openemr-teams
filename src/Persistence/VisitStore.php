@@ -124,18 +124,26 @@ final class VisitStore
      * @param list<int> $staffIds
      * @param list<array{pid: int, period: string, status: string, timeIn: ?int, timeOut: ?int}> $slots
      */
-    public function saveDay(int $teamId, string $date, array $staffIds, array $slots, int $recordedBy): void
-    {
-        $this->transaction(function () use ($teamId, $date, $staffIds, $slots, $recordedBy): void {
-            QueryUtils::sqlStatementThrowException(
-                'DELETE FROM provider_team_day_staff WHERE team_id = ? AND visit_date = ?',
-                [$teamId, $date]
-            );
-            foreach ($staffIds as $userId) {
-                QueryUtils::sqlInsert(
-                    'INSERT INTO provider_team_day_staff (team_id, visit_date, user_id) VALUES (?, ?, ?)',
-                    [$teamId, $date, $userId]
+    public function saveDay(
+        int $teamId,
+        string $date,
+        array $staffIds,
+        array $slots,
+        int $recordedBy,
+        bool $updateStaff = true,
+    ): void {
+        $this->transaction(function () use ($teamId, $date, $staffIds, $slots, $recordedBy, $updateStaff): void {
+            if ($updateStaff) {
+                QueryUtils::sqlStatementThrowException(
+                    'DELETE FROM provider_team_day_staff WHERE team_id = ? AND visit_date = ?',
+                    [$teamId, $date]
                 );
+                foreach ($staffIds as $userId) {
+                    QueryUtils::sqlInsert(
+                        'INSERT INTO provider_team_day_staff (team_id, visit_date, user_id) VALUES (?, ?, ?)',
+                        [$teamId, $date, $userId]
+                    );
+                }
             }
             foreach ($slots as $slot) {
                 if ($slot['status'] === VisitStatus::BLANK) {

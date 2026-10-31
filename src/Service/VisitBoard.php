@@ -16,6 +16,7 @@ use OpenEMR\Modules\ProviderTeams\Domain\TimeOfDay;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitCsv;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitMatrixBuilder;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitPeriod;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitStatus;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
@@ -64,10 +65,18 @@ final class VisitBoard
     /**
      * @param list<int> $staffIds
      * @param array<int|string, mixed> $rawSlots
+     * @param array<int|string, mixed> $dirtyPatients
      * @return list<string>
      */
-    public function saveDay(int $teamId, string $date, array $staffIds, array $rawSlots, int $recordedBy): array
-    {
+    public function saveDay(
+        int $teamId,
+        string $date,
+        array $staffIds,
+        array $rawSlots,
+        int $recordedBy,
+        array $dirtyPatients = [],
+        bool $staffDirty = false,
+    ): array {
         $team = $this->teams->find($teamId);
         if ($team === null) {
             return ['That team was not found.'];
@@ -80,6 +89,10 @@ final class VisitBoard
             return ['Enter a valid date.'];
         }
         $date = $parsed->format('Y-m-d');
+        $rawSlots = VisitSaveScope::filterPatientSlots($rawSlots, $dirtyPatients);
+        if ($rawSlots === [] && !$staffDirty) {
+            return ['Choose at least one patient row to save, or change staff on duty.'];
+        }
         $allowed = [];
         foreach ($this->visits->patientsForRange($teamId, $date, $date) as $patient) {
             $allowed[$patient['pid']] = $patient['name'];
@@ -131,13 +144,44 @@ final class VisitBoard
             }
         }
         if ($anyReal && $staffIds === []) {
-            $errors[] = 'Choose the staff who attended this day.';
+            if (!$staffDirty) {
+                $staffIds = $this->visits->staffIdsForDate($teamId, $date);
+            }
+            if ($staffIds === []) {
+                $errors[] = 'Choose the staff who attended this day.';
+            }
         }
         if ($errors !== []) {
             return $errors;
         }
-        $this->visits->saveDay($teamId, $date, $staffIds, $normalized, $recordedBy);
+        $updateStaff = $staffDirty || $anyReal;
+        if (!$updateStaff && $normalized === []) {
+            return ['Choose at least one patient row to save, or change staff on duty.'];
+        }
+        $this->visits->saveDay(
+            $teamId,
+            $date,
+            $staffIds,
+            $normalized,
+            $recordedBy,
+            $updateStaff
+        );
         return [];
+    }
+
+    /**
+     * @return null|'none'|'joined_later'
+     */
+    public function dayEmptyReason(int $teamId, string $date): ?string
+    {
+        if ($this->teams->activePatientCount($teamId) === 0) {
+            return 'none';
+        }
+        $onDate = $this->visits->patientsForRange($teamId, $date, $date);
+        if ($onDate === []) {
+            return 'joined_later';
+        }
+        return null;
     }
 
     public function exportCsv(int $teamId, string $from, string $to): string
