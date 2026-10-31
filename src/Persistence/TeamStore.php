@@ -15,7 +15,7 @@ use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\PersonName;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
 
-final class TeamStore
+class TeamStore
 {
     /**
      * @return list<array{id: int, name: string, active: int, notes: string, member_count: int, patient_count: int}>
@@ -284,6 +284,21 @@ final class TeamStore
             'UPDATE provider_team_patients SET assigned_at = ? WHERE team_id = ? AND pid = ? AND active = 1',
             [$assignedAt, $teamId, $pid]
         );
+    }
+
+    /**
+     * @return array{assigned_at: string}|null
+     */
+    public function findActivePatientAssignment(int $teamId, int $pid): ?array
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT assigned_at FROM provider_team_patients WHERE team_id = ? AND pid = ? AND active = 1',
+            [$teamId, $pid]
+        );
+        if (!is_array($row)) {
+            return null;
+        }
+        return ['assigned_at' => (string) ($row['assigned_at'] ?? '')];
     }
 
     private function nextPosition(int $teamId): int

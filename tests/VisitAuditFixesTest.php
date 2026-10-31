@@ -12,13 +12,32 @@ use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitExportFormat;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Http\Access;
+use OpenEMR\Modules\ProviderTeams\Http\SessionUserId;
+use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
+use OpenEMR\Modules\ProviderTeams\Persistence\VisitStore;
+use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
+use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
+use OpenEMR\Modules\ProviderTeams\Service\TeamJoinDateConfirmationRequired;
+use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
+use OpenEMR\Modules\ProviderTeams\Service\VisitBoard;
 use PHPUnit\Framework\TestCase;
 
 final class VisitAuditFixesTest extends TestCase
 {
+    private string $previousTimezone;
+
+    protected function setUp(): void
+    {
+        $this->previousTimezone = date_default_timezone_get();
+        date_default_timezone_set('America/Chicago');
+        unset($GLOBALS['local_timezone'], $GLOBALS['gbl']);
+        parent::setUp();
+    }
+
     protected function tearDown(): void
     {
-        unset($_SESSION['authUserID']);
+        date_default_timezone_set($this->previousTimezone);
+        unset($_SESSION['authUserID'], $GLOBALS['local_timezone'], $GLOBALS['gbl']);
         parent::tearDown();
     }
 
@@ -26,6 +45,27 @@ final class VisitAuditFixesTest extends TestCase
     {
         $_SESSION['authUserID'] = '42';
         self::assertSame(42, (new Access())->userId());
+    }
+
+    public function testSessionUserIdReadsOpenEmr85SessionWrapper(): void
+    {
+        $session = new class () {
+            public function get(string $key): ?string
+            {
+                return $key === 'authUserID' ? '99' : null;
+            }
+        };
+        $factory = new class ($session) {
+            public function __construct(private object $session)
+            {
+            }
+
+            public function getActiveSession(): object
+            {
+                return $this->session;
+            }
+        };
+        self::assertSame(99, SessionUserId::current($factory));
     }
 
     public function testVisitSaveScopeKeepsOnlyDirtyPatients(): void
@@ -44,15 +84,154 @@ final class VisitAuditFixesTest extends TestCase
         self::assertTrue(VisitSaveScope::shouldUpdateStaff('1'));
     }
 
-    public function testAssignedAtAcceptsDatetimeLocalInput(): void
+    public function testAssignedAtUsesClinicTimezone(): void
     {
+        $GLOBALS['local_timezone'] = 'America/Chicago';
         self::assertSame('2026-03-04 09:30:00', DateSpan::assignedAt('2026-03-04T09:30'));
-        self::assertSame('2026-03-04 00:00:00', DateSpan::assignedAt('2026-03-04'));
+        self::assertSame('2026-03-04T09:30', DateSpan::assignedAtInputValue('2026-03-04 09:30:00'));
     }
 
-    public function testAssignedAtInputValueForStoredDatetime(): void
+    public function testAssignedAtRejectsInvalidInput(): void
     {
-        self::assertSame('2026-03-04T09:30', DateSpan::assignedAtInputValue('2026-03-04 09:30:00'));
+        self::assertNull(DateSpan::assignedAt('not-a-date'));
+    }
+
+    public function testTeamJoinDateRejectsFutureDates(): void
+    {
+        $admin = $this->teamAdminWithAssignment('2026-01-01 00:00:00', 0);
+        $this->expectException(TeamRuleException::class);
+        $this->expectExceptionMessage('future');
+        $admin->updatePatientAssignedAt(1, 5, '2099-12-31T23:59', false);
+    }
+
+    public function testTeamJoinDateRequiresConfirmationWhenVisitsWouldBeHidden(): void
+    {
+        $admin = $this->teamAdminWithAssignment('2026-01-01 00:00:00', 2);
+        try {
+            $admin->updatePatientAssignedAt(1, 5, '2026-06-01T00:00', false);
+            self::fail('Expected confirmation requirement.');
+        } catch (TeamJoinDateConfirmationRequired $exception) {
+            self::assertSame(2, $exception->affectedVisitCount);
+            self::assertSame(5, $exception->pid);
+        }
+    }
+
+    public function testTeamJoinDateSavesWhenConfirmed(): void
+    {
+        $teams = new class () extends TeamStore {
+            public ?string $saved = null;
+
+            public function find(int $teamId): ?array
+            {
+                return ['id' => $teamId, 'name' => 'A', 'active' => 1, 'notes' => ''];
+            }
+
+            public function findActivePatientAssignment(int $teamId, int $pid): ?array
+            {
+                return ['assigned_at' => '2026-01-01 00:00:00'];
+            }
+
+            public function updateAssignedAt(int $teamId, int $pid, string $assignedAt): void
+            {
+                $this->saved = $assignedAt;
+            }
+        };
+        $visits = new class () extends VisitStore {
+            public function countVisitsExcludedByJoin(int $teamId, int $pid, string $assignedAt): int
+            {
+                return 1;
+            }
+        };
+        $admin = new TeamAdmin(
+            $teams,
+            new \OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore(),
+            new CareTeamSync(),
+            $visits
+        );
+        $admin->updatePatientAssignedAt(1, 5, '2026-06-01T00:00', true);
+        self::assertSame('2026-06-01 00:00:00', $teams->saved);
+    }
+
+    public function testPartialSavePersistsOnlyDirtyPatientRows(): void
+    {
+        $teams = new class () extends TeamStore {
+            public function find(int $teamId): ?array
+            {
+                return ['id' => $teamId, 'name' => 'A', 'active' => 1, 'notes' => ''];
+            }
+
+            public function activeMemberIds(int $teamId): array
+            {
+                return [10];
+            }
+        };
+        $visits = new class () extends VisitStore {
+            /** @var list<array<string, mixed>> */
+            public array $savedDays = [];
+
+            /**
+             * @return list<array{pid: int, name: string, position: int}>
+             */
+            public function patientsForRange(int $teamId, string $from, string $to): array
+            {
+                return [
+                    ['pid' => 1, 'name' => 'One', 'position' => 1],
+                    ['pid' => 2, 'name' => 'Two', 'position' => 2],
+                ];
+            }
+
+            public function staffIdsForDate(int $teamId, string $date): array
+            {
+                return [10];
+            }
+
+            public function saveDay(
+                int $teamId,
+                string $date,
+                array $staffIds,
+                array $slots,
+                int $recordedBy,
+                bool $updateStaff = true,
+            ): void {
+                $this->savedDays[] = [
+                    'teamId' => $teamId,
+                    'date' => $date,
+                    'staffIds' => $staffIds,
+                    'slots' => $slots,
+                    'recordedBy' => $recordedBy,
+                    'updateStaff' => $updateStaff,
+                ];
+            }
+        };
+        $board = new VisitBoard($teams, $visits);
+        $errors = $board->saveDay(
+            1,
+            '2026-03-01',
+            [10],
+            [
+                1 => [
+                    'morning' => ['in' => '06:00', 'out' => '06:30', 'missed' => ''],
+                    'midday' => ['in' => '', 'out' => '', 'missed' => ''],
+                    'afternoon' => ['in' => '', 'out' => '', 'missed' => ''],
+                    'evening' => ['in' => '', 'out' => '', 'missed' => ''],
+                ],
+                2 => [
+                    'morning' => ['in' => '', 'out' => '', 'missed' => ''],
+                    'midday' => ['in' => '', 'out' => '', 'missed' => ''],
+                    'afternoon' => ['in' => '', 'out' => '', 'missed' => ''],
+                    'evening' => ['in' => '', 'out' => '', 'missed' => ''],
+                ],
+            ],
+            7,
+            ['1' => '1', '2' => '0'],
+            false
+        );
+        self::assertSame([], $errors);
+        self::assertCount(1, $visits->savedDays);
+        $pids = array_values(array_unique(array_column($visits->savedDays[0]['slots'], 'pid')));
+        self::assertSame([1], $pids);
+        self::assertSame(7, $visits->savedDays[0]['recordedBy']);
+        self::assertTrue($visits->savedDays[0]['updateStaff']);
     }
 
     public function testCsvExportUsesUtf8BomAndAsciiHyphenInRanges(): void
@@ -61,5 +240,40 @@ final class VisitAuditFixesTest extends TestCase
         self::assertSame('text/csv; charset=utf-8', VisitExportFormat::CONTENT_TYPE);
         self::assertSame('06:00-06:30', VisitExportFormat::timeRange('06:00', '06:30'));
         self::assertStringNotContainsString('–', VisitExportFormat::timeRange('06:00', '06:30'));
+    }
+
+    private function teamAdminWithAssignment(string $assignedAt, int $excludedVisits): TeamAdmin
+    {
+        $teams = new class ($assignedAt) extends TeamStore {
+            public function __construct(private string $assignedAt)
+            {
+            }
+
+            public function find(int $teamId): ?array
+            {
+                return ['id' => $teamId, 'name' => 'A', 'active' => 1, 'notes' => ''];
+            }
+
+            public function findActivePatientAssignment(int $teamId, int $pid): ?array
+            {
+                return ['assigned_at' => $this->assignedAt];
+            }
+        };
+        $visits = new class ($excludedVisits) extends VisitStore {
+            public function __construct(private int $excludedVisits)
+            {
+            }
+
+            public function countVisitsExcludedByJoin(int $teamId, int $pid, string $assignedAt): int
+            {
+                return $this->excludedVisits;
+            }
+        };
+        return new TeamAdmin(
+            $teams,
+            new \OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore(),
+            new CareTeamSync(),
+            $visits
+        );
     }
 }

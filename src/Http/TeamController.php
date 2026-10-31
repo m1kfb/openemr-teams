@@ -12,6 +12,7 @@ namespace OpenEMR\Modules\ProviderTeams\Http;
 
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
+use OpenEMR\Modules\ProviderTeams\Service\TeamJoinDateConfirmationRequired;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
 
 final class TeamController
@@ -83,7 +84,8 @@ final class TeamController
                     $this->admin->updatePatientAssignedAt(
                         $teamId,
                         $this->int($post['pid'] ?? 0),
-                        $this->text($post['assigned_at'] ?? '')
+                        $this->text($post['assigned_at'] ?? ''),
+                        isset($post['confirm_affected_visits'])
                     );
                     return $this->redirect($teamId, 'join_date_saved');
                 case 'pull_care_team':
@@ -98,6 +100,21 @@ final class TeamController
                 default:
                     return $this->get($teamId, ['team_id' => $teamId], ['Unknown action.']);
             }
+        } catch (TeamJoinDateConfirmationRequired $exception) {
+            return $this->get(
+                $teamId,
+                [
+                    'team_id' => $teamId,
+                    'user_q' => $this->text($post['user_q'] ?? ''),
+                    'patient_q' => $this->text($post['patient_q'] ?? ''),
+                ],
+                [$exception->getMessage()],
+                [
+                    'pid' => $exception->pid,
+                    'assigned_at' => $exception->assignedAtInput,
+                    'affected' => $exception->affectedVisitCount,
+                ]
+            );
         } catch (TeamRuleException $exception) {
             return $this->get($teamId, [
                 'team_id' => $teamId,
@@ -110,8 +127,9 @@ final class TeamController
     /**
      * @param array<string, mixed> $query
      * @param list<string> $errors
+     * @param array{pid?: int, assigned_at?: string, affected?: int}|null $joinConfirm
      */
-    private function get(int $teamId, array $query, array $errors): PageResult
+    private function get(int $teamId, array $query, array $errors, ?array $joinConfirm = null): PageResult
     {
         $teams = $this->admin->listTeams();
         $team = $teamId > 0 ? $this->admin->find($teamId) : null;
@@ -131,6 +149,7 @@ final class TeamController
             'teamPatientCount' => $team === null ? 0 : $this->admin->activePatientCount($team['id']),
             'errors' => $errors,
             'notice' => $this->notice($this->text($query['notice'] ?? '')),
+            'joinConfirm' => $joinConfirm,
         ]);
         return new PageResult('Provider Teams', $body);
     }

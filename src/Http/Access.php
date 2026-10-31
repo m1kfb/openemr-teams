@@ -11,7 +11,6 @@ declare(strict_types=1);
 namespace OpenEMR\Modules\ProviderTeams\Http;
 
 use OpenEMR\Common\Acl\AclMain;
-use OpenEMR\Common\Session\SessionWrapperFactory;
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
 
 final class Access
@@ -42,12 +41,6 @@ final class Access
 
     public function userId(): int
     {
-        if (class_exists(SessionWrapperFactory::class)) {
-            $fromSession = SessionWrapperFactory::getInstance()->getActiveSession()->get('authUserID');
-            if ($fromSession !== null && $fromSession !== '') {
-                return (int) $fromSession;
-            }
-        }
-        return (int) ($_SESSION['authUserID'] ?? 0);
+        return SessionUserId::current();
     }
 }

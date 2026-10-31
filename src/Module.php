@@ -26,7 +26,7 @@ final class Module
 {
     public static function teamAdmin(): TeamAdmin
     {
-        return new TeamAdmin(new TeamStore(), new DirectoryStore(), new CareTeamSync());
+        return new TeamAdmin(new TeamStore(), new DirectoryStore(), new CareTeamSync(), new VisitStore());
     }
 
     public static function teamController(): TeamController

@@ -14,7 +14,7 @@ use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Modules\ProviderTeams\Domain\PersonName;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitStatus;
 
-final class VisitStore
+class VisitStore
 {
     /**
      * Patients assigned on any date in the range, plus anyone who already has a call in the range.
@@ -118,6 +118,21 @@ final class VisitStore
             [$teamId, $date]
         );
         return array_map(static fn (array $row): int => (int) $row['user_id'], $rows);
+    }
+
+    /**
+     * Visits that would no longer appear once the join datetime is moved later.
+     */
+    public function countVisitsExcludedByJoin(int $teamId, int $pid, string $assignedAt): int
+    {
+        $row = QueryUtils::querySingleRow(
+            'SELECT COUNT(*) AS cnt
+             FROM provider_team_visits
+             WHERE team_id = ? AND pid = ?
+               AND ? >= DATE_ADD(visit_date, INTERVAL 1 DAY)',
+            [$teamId, $pid, $assignedAt]
+        );
+        return is_array($row) ? (int) $row['cnt'] : 0;
     }
 
     /**

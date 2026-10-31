@@ -62,6 +62,8 @@ final class DateSpan
 
     /**
      * Normalizes a team join timestamp from a date or datetime-local field.
+     *
+     * Parsed in the OpenEMR clinic timezone (see ClinicTime); stored as Y-m-d H:i:s.
      */
     public static function assignedAt(string $value): ?string
     {
@@ -69,8 +71,9 @@ final class DateSpan
         if ($value === '') {
             return null;
         }
+        $zone = ClinicTime::timezone();
         if (str_contains($value, 'T')) {
-            $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $value, new \DateTimeZone('UTC'));
+            $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $value, $zone);
             $errors = \DateTimeImmutable::getLastErrors();
             if (
                 $dateTime === false
@@ -78,31 +81,23 @@ final class DateSpan
             ) {
                 return null;
             }
-            return $dateTime->format('Y-m-d H:i:s');
+            return ClinicTime::formatStored($dateTime);
         }
         $day = self::day($value);
         if ($day === null) {
             return null;
         }
-        return $day->format('Y-m-d') . ' 00:00:00';
+        return ClinicTime::formatStored(new \DateTimeImmutable($day->format('Y-m-d') . ' 00:00:00', $zone));
     }
 
     /**
-     * Value for an HTML datetime-local input from a stored datetime.
+     * Value for an HTML datetime-local input from a stored datetime (clinic timezone).
      */
     public static function assignedAtInputValue(string $stored): string
     {
-        $stored = trim($stored);
-        if ($stored === '') {
+        $dateTime = ClinicTime::parseStored($stored);
+        if ($dateTime === null) {
             return '';
-        }
-        $dateTime = \DateTimeImmutable::createFromFormat('Y-m-d H:i:s', $stored, new \DateTimeZone('UTC'));
-        if ($dateTime === false) {
-            $day = self::day(substr($stored, 0, 10));
-            if ($day === null) {
-                return '';
-            }
-            return $day->format('Y-m-d') . 'T00:00';
         }
         return $dateTime->format('Y-m-d\TH:i');
     }
