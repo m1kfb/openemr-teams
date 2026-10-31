@@ -76,7 +76,7 @@
 {% elseif rows is empty and errors is empty %}
     <div class="alert alert-info">{{ 'No patients are on this team for these dates. Assign patients from the Teams page.'|xlt }}</div>
 {% else %}
-    <form method="post" id="visit-day-form" class="visit-day-form">
+    <form method="post" id="visit-day-form" class="visit-day-form" data-save-row-label="{{ 'Save row'|xla }}" data-retry-row-label="{{ 'Retry'|xla }}" data-row-save-failed="{{ 'Could not save this row. Fix any errors and try again.'|xla }}">
         <input type="hidden" name="csrf_token" value="{{ csrf|attr }}">
         <input type="hidden" name="team_id" value="{{ team.id|attr }}">
         <input type="hidden" name="date" value="{{ date|attr }}">
@@ -158,8 +158,9 @@
                             {% endfor %}
                             <td>{{ row.staffLabel|text }}</td>
                             {% if editable %}
-                                <td class="no-print text-nowrap">
+                                <td class="no-print visit-row-actions">
                                     <button class="btn btn-sm btn-outline-primary save-patient-row" type="button" data-pid="{{ row.pid|attr }}">{{ 'Save row'|xlt }}</button>
+                                    <div class="visit-row-error text-danger small" role="alert"></div>
                                 </td>
                             {% endif %}
                         </tr>

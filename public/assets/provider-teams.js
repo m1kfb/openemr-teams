@@ -32,7 +32,17 @@
 
     var visitForm = document.getElementById("visit-day-form");
     if (visitForm) {
+        var saveRowLabel = visitForm.getAttribute("data-save-row-label") || "Save row";
+        var retryRowLabel = visitForm.getAttribute("data-retry-row-label") || "Retry";
+        var saveFailedMessage = visitForm.getAttribute("data-row-save-failed")
+            || "Could not save this row. Fix any errors and try again.";
+        var suppressBeforeUnload = false;
         var staffDirty = document.getElementById("staff-dirty");
+
+        visitForm.addEventListener("submit", function () {
+            suppressBeforeUnload = true;
+        });
+
         var markStaffDirty = function () {
             if (staffDirty) {
                 staffDirty.value = "1";
@@ -58,6 +68,31 @@
             return visitForm.querySelector(".patient-dirty-flag[value=\"1\"]") !== null;
         };
 
+        var rowErrorBox = function (row) {
+            return row.querySelector(".visit-row-error");
+        };
+
+        var clearRowError = function (row, button) {
+            var box = rowErrorBox(row);
+            if (box) {
+                box.textContent = "";
+            }
+            if (button) {
+                button.textContent = saveRowLabel;
+            }
+        };
+
+        var showRowError = function (row, messages, button) {
+            var box = rowErrorBox(row);
+            if (box) {
+                box.textContent = messages.join(" ");
+            }
+            setRowDirty(row, true);
+            if (button) {
+                button.textContent = retryRowLabel;
+            }
+        };
+
         visitForm.querySelectorAll(".visit-patient-row").forEach(function (row) {
             row.querySelectorAll(".time-input, .missed-toggle").forEach(function (input) {
                 var markDirty = function () {
@@ -69,15 +104,16 @@
         });
 
         window.addEventListener("beforeunload", function (event) {
-            if (!anyRowDirty()) {
+            if (suppressBeforeUnload || !anyRowDirty()) {
                 return;
             }
             event.preventDefault();
             event.returnValue = "";
         });
 
-        var saveRowViaFetch = function (pid, row) {
+        var saveRowViaFetch = function (row, button) {
             var formData = new FormData(visitForm);
+            formData.set("save_mode", "row");
             visitForm.querySelectorAll(".patient-dirty-flag").forEach(function (flag) {
                 formData.set(flag.name, "0");
             });
@@ -90,13 +126,19 @@
                 method: "POST",
                 body: formData,
                 credentials: "same-origin",
-                redirect: "follow",
+                headers: {
+                    Accept: "application/json",
+                },
             }).then(function (response) {
-                if (response.ok && response.url.indexOf("notice=saved") !== -1) {
+                return response.json();
+            }).then(function (data) {
+                if (data && data.ok === true) {
+                    clearRowError(row, button);
                     setRowDirty(row, false);
                     return;
                 }
-                throw new Error("save_failed");
+                var errors = data && Array.isArray(data.errors) ? data.errors : [saveFailedMessage];
+                showRowError(row, errors, button);
             });
         };
 
@@ -107,13 +149,14 @@
                 if (!row) {
                     return;
                 }
-                if (row.querySelector(".patient-dirty-flag") && row.querySelector(".patient-dirty-flag").value !== "1") {
+                var flag = row.querySelector(".patient-dirty-flag");
+                if (flag && flag.value !== "1") {
                     setRowDirty(row, true);
                 }
                 button.disabled = true;
-                saveRowViaFetch(pid, row)
+                saveRowViaFetch(row, button)
                     .catch(function () {
-                        window.alert("Could not save this row. Fix any errors and try again.");
+                        showRowError(row, [saveFailedMessage], button);
                     })
                     .finally(function () {
                         button.disabled = false;

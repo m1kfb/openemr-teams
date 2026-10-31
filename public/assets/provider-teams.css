@@ -23,6 +23,15 @@
     background-color: #fff3cd;
 }
 
+.provider-teams .visit-row-error:empty {
+    display: none;
+}
+
+.provider-teams .visit-row-error {
+    margin-top: 0.35rem;
+    max-width: 14rem;
+}
+
 .provider-teams .print-only {
     display: none;
 }

@@ -12,6 +12,8 @@ use OpenEMR\Modules\ProviderTeams\Domain\CsvCellSanitizer;
 use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitCsv;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitExportFormat;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveJson;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveMode;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Http\Access;
 use OpenEMR\Modules\ProviderTeams\Http\SessionUserId;
@@ -288,6 +290,25 @@ final class VisitAuditFixesTest extends TestCase
         self::assertSame('text/csv; charset=utf-8', VisitExportFormat::CONTENT_TYPE);
         self::assertSame('06:00-06:30', VisitExportFormat::timeRange('06:00', '06:30'));
         self::assertStringNotContainsString('–', VisitExportFormat::timeRange('06:00', '06:30'));
+    }
+
+    public function testVisitSaveModeDetectsRowSavePost(): void
+    {
+        self::assertTrue(VisitSaveMode::isRowSave(['save_mode' => 'row']));
+        self::assertFalse(VisitSaveMode::isRowSave(['save_mode' => 'all']));
+        self::assertFalse(VisitSaveMode::isRowSave([]));
+    }
+
+    public function testVisitSaveJsonFailurePayloadListsTranslatedErrors(): void
+    {
+        $payload = VisitSaveJson::failure(['Choose the staff who attended this day.']);
+        self::assertFalse($payload['ok']);
+        self::assertSame(['Choose the staff who attended this day.'], $payload['errors']);
+    }
+
+    public function testVisitSaveJsonSuccessPayload(): void
+    {
+        self::assertSame(['ok' => true], VisitSaveJson::success());
     }
 
     private function teamAdminWithAssignment(string $assignedAt, int $excludedVisits): TeamAdmin

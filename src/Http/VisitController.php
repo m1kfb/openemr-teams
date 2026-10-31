@@ -14,6 +14,8 @@ use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
 use OpenEMR\Modules\ProviderTeams\Domain\Permission;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitExportFormat;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitPeriod;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveJson;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveMode;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Service\TeamAdmin;
 use OpenEMR\Modules\ProviderTeams\Service\VisitBoard;
@@ -98,6 +100,7 @@ final class VisitController
             }
         }
         $rawSlots = is_array($slots) ? $slots : [];
+        $rowSave = VisitSaveMode::isRowSave($post);
         $errors = $this->board->saveDay(
             $teamId,
             $date,
@@ -108,11 +111,17 @@ final class VisitController
             $staffDirty
         );
         if ($errors === []) {
+            if ($rowSave) {
+                return new PageResult('', '', null, VisitSaveJson::success());
+            }
             return new PageResult('Visit dashboard', '', 'visits.php?' . http_build_query([
                 'team_id' => $teamId,
                 'date' => $date,
                 'notice' => 'saved',
             ]));
+        }
+        if ($rowSave) {
+            return new PageResult('', '', null, VisitSaveJson::failure($errors));
         }
         return $this->show(
             ['team_id' => $teamId, 'date' => $date, 'mode' => 'day'],

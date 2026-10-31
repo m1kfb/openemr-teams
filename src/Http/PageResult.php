@@ -12,10 +12,14 @@ namespace OpenEMR\Modules\ProviderTeams\Http;
 
 final class PageResult
 {
+    /**
+     * @param array<string, mixed>|null $json When set, visits.php emits JSON instead of HTML.
+     */
     public function __construct(
         public readonly string $title,
         public readonly string $body = '',
         public readonly ?string $redirect = null,
+        public readonly ?array $json = null,
     ) {
     }
 }
