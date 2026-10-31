@@ -159,7 +159,7 @@
                             <td>{{ row.staffLabel|text }}</td>
                             {% if editable %}
                                 <td class="no-print text-nowrap">
-                                    <button class="btn btn-sm btn-outline-primary save-patient-row" type="submit" data-pid="{{ row.pid|attr }}">{{ 'Save row'|xlt }}</button>
+                                    <button class="btn btn-sm btn-outline-primary save-patient-row" type="button" data-pid="{{ row.pid|attr }}">{{ 'Save row'|xlt }}</button>
                                 </td>
                             {% endif %}
                         </tr>

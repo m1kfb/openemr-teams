@@ -8,7 +8,9 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams\Tests;
 
+use OpenEMR\Modules\ProviderTeams\Domain\CsvCellSanitizer;
 use OpenEMR\Modules\ProviderTeams\Domain\DateSpan;
+use OpenEMR\Modules\ProviderTeams\Domain\VisitCsv;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitExportFormat;
 use OpenEMR\Modules\ProviderTeams\Domain\VisitSaveScope;
 use OpenEMR\Modules\ProviderTeams\Http\Access;
@@ -148,8 +150,54 @@ final class VisitAuditFixesTest extends TestCase
             new CareTeamSync(),
             $visits
         );
-        $admin->updatePatientAssignedAt(1, 5, '2026-06-01T00:00', true);
+        $admin->updatePatientAssignedAt(1, 5, '2026-06-01T00:00', true, 1);
         self::assertSame('2026-06-01 00:00:00', $teams->saved);
+    }
+
+    public function testTeamJoinDateRejectsPatientNotOnTeam(): void
+    {
+        $teams = new class () extends TeamStore {
+            public function find(int $teamId): ?array
+            {
+                return ['id' => $teamId, 'name' => 'A', 'active' => 1, 'notes' => ''];
+            }
+
+            public function findActivePatientAssignment(int $teamId, int $pid): ?array
+            {
+                return null;
+            }
+        };
+        $admin = new TeamAdmin(
+            $teams,
+            new \OpenEMR\Modules\ProviderTeams\Persistence\DirectoryStore(),
+            new CareTeamSync(),
+            new VisitStore()
+        );
+        $this->expectException(TeamRuleException::class);
+        $this->expectExceptionMessage('not on this team');
+        $admin->updatePatientAssignedAt(1, 999, '2026-03-01T00:00', false);
+    }
+
+    public function testTeamJoinDateRejectsStaleConfirmCount(): void
+    {
+        $admin = $this->teamAdminWithAssignment('2026-01-01 00:00:00', 3);
+        $this->expectException(TeamRuleException::class);
+        $this->expectExceptionMessage('count changed');
+        $admin->updatePatientAssignedAt(1, 5, '2026-06-01T00:00', true, 2);
+    }
+
+    public function testCsvSanitizerPrefixesSpreadsheetFormulaCells(): void
+    {
+        self::assertSame("'=1+1", CsvCellSanitizer::sanitize('=1+1'));
+        self::assertSame("'+cmd", CsvCellSanitizer::sanitize('+cmd'));
+        $rows = (new \OpenEMR\Modules\ProviderTeams\Domain\VisitMatrixBuilder())->build(
+            [['pid' => 1, 'name' => '=HYPERLINK("x")', 'position' => 1]],
+            ['2026-03-30'],
+            [],
+            []
+        );
+        $csv = (new VisitCsv())->render($rows);
+        self::assertStringContainsString("'=HYPERLINK", $csv);
     }
 
     public function testPartialSavePersistsOnlyDirtyPatientRows(): void

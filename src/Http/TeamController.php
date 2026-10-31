@@ -81,11 +81,13 @@ final class TeamController
                     $this->admin->saveOrder($teamId, is_array($positions) ? $positions : []);
                     return $this->redirect($teamId, 'order_saved');
                 case 'update_patient_join':
+                    $confirmCount = $post['confirm_affected_count'] ?? null;
                     $this->admin->updatePatientAssignedAt(
                         $teamId,
                         $this->int($post['pid'] ?? 0),
                         $this->text($post['assigned_at'] ?? ''),
-                        isset($post['confirm_affected_visits'])
+                        isset($post['confirm_affected_visits']),
+                        is_scalar($confirmCount) && is_numeric($confirmCount) ? (int) $confirmCount : null
                     );
                     return $this->redirect($teamId, 'join_date_saved');
                 case 'pull_care_team':

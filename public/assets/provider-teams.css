@@ -19,6 +19,10 @@
     font-weight: 600;
 }
 
+.provider-teams .visit-patient-row.visit-row-unsaved td {
+    background-color: #fff3cd;
+}
+
 .provider-teams .print-only {
     display: none;
 }

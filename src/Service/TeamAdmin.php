@@ -164,8 +164,13 @@ final class TeamAdmin
         $this->teams->savePositions($teamId, $clean);
     }
 
-    public function updatePatientAssignedAt(int $teamId, int $pid, string $rawAssignedAt, bool $confirmed): void
-    {
+    public function updatePatientAssignedAt(
+        int $teamId,
+        int $pid,
+        string $rawAssignedAt,
+        bool $confirmed,
+        ?int $confirmAffectedCount = null,
+    ): void {
         $this->requireTeam($teamId);
         if ($pid <= 0) {
             throw new TeamRuleException('That patient was not found.');
@@ -191,6 +196,13 @@ final class TeamAdmin
             $affected = $this->visits->countVisitsExcludedByJoin($teamId, $pid, $stored);
             if ($affected > 0 && !$confirmed) {
                 throw new TeamJoinDateConfirmationRequired($affected, $pid, $rawAssignedAt);
+            }
+            if ($confirmed && $affected > 0) {
+                if ($confirmAffectedCount === null || $confirmAffectedCount !== $affected) {
+                    throw new TeamRuleException(
+                        'The affected visit count changed. Save the join date again and confirm.'
+                    );
+                }
             }
         }
         $this->teams->updateAssignedAt($teamId, $pid, $stored);

@@ -42,35 +42,82 @@
             input.addEventListener("change", markStaffDirty);
         });
 
-        var markPatientDirty = function (row) {
+        var setRowDirty = function (row, dirty) {
             var flag = row.querySelector(".patient-dirty-flag");
             if (flag) {
-                flag.value = "1";
+                flag.value = dirty ? "1" : "0";
             }
+            if (dirty) {
+                row.classList.add("visit-row-unsaved");
+            } else {
+                row.classList.remove("visit-row-unsaved");
+            }
+        };
+
+        var anyRowDirty = function () {
+            return visitForm.querySelector(".patient-dirty-flag[value=\"1\"]") !== null;
         };
 
         visitForm.querySelectorAll(".visit-patient-row").forEach(function (row) {
             row.querySelectorAll(".time-input, .missed-toggle").forEach(function (input) {
-                input.addEventListener("change", function () {
-                    markPatientDirty(row);
-                });
-                input.addEventListener("input", function () {
-                    markPatientDirty(row);
-                });
+                var markDirty = function () {
+                    setRowDirty(row, true);
+                };
+                input.addEventListener("change", markDirty);
+                input.addEventListener("input", markDirty);
             });
         });
+
+        window.addEventListener("beforeunload", function (event) {
+            if (!anyRowDirty()) {
+                return;
+            }
+            event.preventDefault();
+            event.returnValue = "";
+        });
+
+        var saveRowViaFetch = function (pid, row) {
+            var formData = new FormData(visitForm);
+            visitForm.querySelectorAll(".patient-dirty-flag").forEach(function (flag) {
+                formData.set(flag.name, "0");
+            });
+            var rowFlag = row.querySelector(".patient-dirty-flag");
+            if (rowFlag) {
+                formData.set(rowFlag.name, "1");
+            }
+            var postUrl = visitForm.getAttribute("action") || window.location.href;
+            return fetch(postUrl, {
+                method: "POST",
+                body: formData,
+                credentials: "same-origin",
+                redirect: "follow",
+            }).then(function (response) {
+                if (response.ok && response.url.indexOf("notice=saved") !== -1) {
+                    setRowDirty(row, false);
+                    return;
+                }
+                throw new Error("save_failed");
+            });
+        };
 
         visitForm.querySelectorAll(".save-patient-row").forEach(function (button) {
             button.addEventListener("click", function () {
                 var pid = button.getAttribute("data-pid");
-                visitForm.querySelectorAll(".patient-dirty-flag").forEach(function (flag) {
-                    flag.value = "0";
-                });
-                visitForm.querySelectorAll(".visit-patient-row").forEach(function (row) {
-                    if (row.getAttribute("data-pid") === pid) {
-                        markPatientDirty(row);
-                    }
-                });
+                var row = visitForm.querySelector('.visit-patient-row[data-pid="' + pid + '"]');
+                if (!row) {
+                    return;
+                }
+                if (row.querySelector(".patient-dirty-flag") && row.querySelector(".patient-dirty-flag").value !== "1") {
+                    setRowDirty(row, true);
+                }
+                button.disabled = true;
+                saveRowViaFetch(pid, row)
+                    .catch(function () {
+                        window.alert("Could not save this row. Fix any errors and try again.");
+                    })
+                    .finally(function () {
+                        button.disabled = false;
+                    });
             });
         });
     }
