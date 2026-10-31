@@ -42,8 +42,10 @@ final class PatientCareTeamExclusionUi
             return '';
         }
         $canRestore = AclMain::aclCheckCore('patients', 'demo', '', 'write');
+        $memberCount = count($members);
         return $this->templates->render('care_team_exclusions.html.twig', [
             'cardSelector' => '#card_care_team .card-body, #careteam_ps_expand .card-body',
+            'reservedHeightPx' => 48 + ($memberCount * 40),
             'members' => $members,
             'teamId' => (int) $assignment['team_id'],
             'teamName' => (string) $assignment['team_name'],
@@ -57,6 +59,7 @@ final class PatientCareTeamExclusionUi
                 'removedTag' => $this->xl('Removed for this patient'),
                 'addBack' => $this->xl('Add back'),
                 'teamLabel' => $this->xl('Provider team'),
+                'loading' => $this->xl('Loading provider team exclusions…'),
             ],
         ]);
     }

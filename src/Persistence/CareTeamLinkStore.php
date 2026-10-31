@@ -29,8 +29,6 @@ class CareTeamLinkStore
 
     /**
      * @return list<int> User ids the module added to this patient's care team for a provider team
-     *
-     * @deprecated Use activeTrackedUserIds() for sync; excludedUserIds() for opt-outs.
      */
     public function trackedUserIds(int $providerTeamId, int $pid): array
     {

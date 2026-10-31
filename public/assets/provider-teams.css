@@ -39,6 +39,17 @@
     font-size: 0.875rem;
 }
 
+.provider-teams-exclusions-placeholder {
+    margin-top: 0.75rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.provider-teams-exclusions-fallback-host.is-visible {
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    padding-top: 0.75rem;
+}
+
 @media print {
     .provider-teams .no-print {
         display: none !important;
