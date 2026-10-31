@@ -204,7 +204,7 @@ final class TeamController
             'patient_unassigned' => 'Patient unassigned. Past visits stay on the dashboard.',
             'order_saved' => 'Patient order saved.',
             'join_date_saved' => 'Team join date saved.',
-            'care_team_pulled' => 'Provider team staff updated from the patient care team. Care teams refreshed for all patients on this team.',
+            'care_team_pulled' => 'Provider team staff updated from the patient care team.',
             'care_team_sync_retried' => 'Care team sync retry finished.',
             'care_team_active_retry_skipped' => 'This team is active again, so module-added care team members were not removed.',
             default => '',
