@@ -13,7 +13,7 @@ namespace OpenEMR\Modules\ProviderTeams\Persistence;
 use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Services\CareTeamService;
 
-final class CareTeamBridge
+class CareTeamBridge
 {
     private ?bool $modernSchema = null;
 
@@ -37,12 +37,16 @@ final class CareTeamBridge
             if (($member['member_type'] ?? 'user') !== 'user') {
                 continue;
             }
+            if (($member['status'] ?? 'active') !== 'active') {
+                continue;
+            }
             $userId = (int) ($member['user_id'] ?? 0);
             if ($userId > 0) {
                 $ids[] = $userId;
             }
         }
-        return array_values(array_unique($ids));
+        $ids = array_values(array_unique($ids));
+        return $this->filterActiveUsers($ids);
     }
 
     /**
@@ -59,6 +63,8 @@ final class CareTeamBridge
         if ($ensureUserIds === [] && $removeUserIds === []) {
             return;
         }
+
+        $ensureUserIds = $this->filterActiveUsers($ensureUserIds);
 
         $service = new CareTeamService();
         $data = $service->getCareTeamData($pid);
@@ -109,11 +115,6 @@ final class CareTeamBridge
                     'note' => '',
                 ];
             }
-        }
-
-        // Idempotent: skip save when nothing changed
-        if ($removeUserIds === [] && $ensureUserIds === []) {
-            return;
         }
 
         $service->saveCareTeam($pid, $teamId ?: null, $teamName, $payload, $teamStatus);
@@ -188,6 +189,38 @@ final class CareTeamBridge
             }
             $seen[$id] = true;
             $out[] = $id;
+        }
+        return $out;
+    }
+
+    /**
+     * @param list<int> $userIds
+     * @return list<int>
+     */
+    private function filterActiveUsers(array $userIds): array
+    {
+        $userIds = $this->uniquePositive($userIds);
+        if ($userIds === []) {
+            return [];
+        }
+        $placeholders = implode(',', array_fill(0, count($userIds), '?'));
+        $rows = QueryUtils::fetchRecords(
+            "SELECT id FROM users
+             WHERE id IN ($placeholders)
+               AND active = 1
+               AND username IS NOT NULL
+               AND username != ''",
+            $userIds
+        );
+        $allowed = [];
+        foreach ($rows as $row) {
+            $allowed[(int) $row['id']] = true;
+        }
+        $out = [];
+        foreach ($userIds as $id) {
+            if (isset($allowed[$id])) {
+                $out[] = $id;
+            }
         }
         return $out;
     }

@@ -8,6 +8,6 @@
 
 $v_major = '1';
 $v_minor = '0';
-$v_patch = '1';
+$v_patch = '2';
 $v_realpatch = '0';
-$v_database = 1;
+$v_database = 2;

@@ -27,6 +27,18 @@
     max-width: 52rem;
 }
 
+.provider-teams-excluded-member {
+    opacity: 0.85;
+}
+
+.provider-teams-removed-tag {
+    font-weight: 500;
+}
+
+.provider-teams-care-team-exclusions .btn-link {
+    font-size: 0.875rem;
+}
+
 @media print {
     .provider-teams .no-print {
         display: none !important;

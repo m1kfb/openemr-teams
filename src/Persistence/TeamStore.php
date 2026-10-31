@@ -14,7 +14,7 @@ use OpenEMR\Common\Database\QueryUtils;
 use OpenEMR\Modules\ProviderTeams\Domain\PersonName;
 use OpenEMR\Modules\ProviderTeams\Service\TeamRuleException;
 
-final class TeamStore
+class TeamStore
 {
     /**
      * @return list<array{id: int, name: string, active: int, notes: string, member_count: int, patient_count: int}>

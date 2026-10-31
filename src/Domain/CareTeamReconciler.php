@@ -18,22 +18,26 @@ final class CareTeamReconciler
      * @param list<int> $teamMemberUserIds Active staff on the provider team
      * @param list<int> $careTeamUserIds Active OpenEMR users on the patient's care team today
      * @param list<int> $moduleTrackedUserIds Users on the care team that this module added for this patient/team
+     * @param list<int> $excludedUserIds Per-patient opt-outs (still on provider team, removed locally)
      */
     public function planTeamToPatient(
         array $teamMemberUserIds,
         array $careTeamUserIds,
         array $moduleTrackedUserIds,
+        array $excludedUserIds = [],
     ): CareTeamPatientPlan {
         $teamMemberUserIds = $this->uniquePositive($teamMemberUserIds);
         $careTeamUserIds = $this->uniquePositive($careTeamUserIds);
         $moduleTrackedUserIds = $this->uniquePositive($moduleTrackedUserIds);
+        $excludedUserIds = $this->uniquePositive($excludedUserIds);
 
         $careSet = array_fill_keys($careTeamUserIds, true);
         $teamSet = array_fill_keys($teamMemberUserIds, true);
+        $excludedSet = array_fill_keys($excludedUserIds, true);
 
         $ensure = [];
         foreach ($teamMemberUserIds as $userId) {
-            if (!isset($careSet[$userId])) {
+            if (!isset($careSet[$userId]) && !isset($excludedSet[$userId])) {
                 $ensure[] = $userId;
             }
         }

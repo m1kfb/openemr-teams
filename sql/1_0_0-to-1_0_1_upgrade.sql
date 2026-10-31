@@ -5,6 +5,8 @@ CREATE TABLE `provider_team_care_team_links` (
     `pid` bigint(20) NOT NULL,
     `user_id` bigint(20) NOT NULL,
     `care_team_member_id` bigint(20) NOT NULL,
+    `excluded` tinyint(1) NOT NULL DEFAULT 0,
+    `excluded_at` datetime DEFAULT NULL,
     `created_at` datetime NOT NULL,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uniq_provider_team_care_link` (`provider_team_id`, `pid`, `user_id`),

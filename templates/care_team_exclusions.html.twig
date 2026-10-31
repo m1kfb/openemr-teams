@@ -1,0 +1,49 @@
+<link rel="stylesheet" href="{{ stylesheet|e('html_attr') }}">
+<template id="provider-teams-care-team-exclusions-template">
+    <div class="provider-teams-care-team-exclusions mt-3 pt-2 border-top">
+        <p class="text-muted small mb-2">{{ labels.heading|text }}</p>
+        <p class="small mb-2">{{ labels.teamLabel|text }}: <strong>{{ teamName|text }}</strong></p>
+        <ul class="list-unstyled mb-0">
+            {% for member in members %}
+                <li class="provider-teams-excluded-member d-flex flex-wrap align-items-center gap-2 mb-2">
+                    <span class="text-muted">{{ member.name|text }}</span>
+                    <span class="badge badge-secondary provider-teams-removed-tag">{{ labels.removedTag|text }}</span>
+                    {% if canRestore %}
+                        <form method="post" action="{{ restoreUrl|e('html_attr') }}" class="d-inline mb-0">
+                            <input type="hidden" name="csrf_token" value="{{ csrfToken|attr }}">
+                            <input type="hidden" name="action" value="restore_exclusion">
+                            <input type="hidden" name="pid" value="{{ pid|attr }}">
+                            <input type="hidden" name="team_id" value="{{ teamId|attr }}">
+                            <input type="hidden" name="user_id" value="{{ member.user_id|attr }}">
+                            <button type="submit" class="btn btn-link btn-sm p-0 align-baseline">{{ labels.addBack|text }}</button>
+                        </form>
+                    {% endif %}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+</template>
+<script>
+(function () {
+    var template = document.getElementById('provider-teams-care-team-exclusions-template');
+    if (!template || !template.content) {
+        return;
+    }
+    var selectors = {{ cardSelector|js_escape }};
+    var target = null;
+    selectors.split(',').forEach(function (part) {
+        if (target) {
+            return;
+        }
+        var node = document.querySelector(part.trim());
+        if (node) {
+            target = node;
+        }
+    });
+    if (!target) {
+        return;
+    }
+    target.appendChild(template.content.cloneNode(true));
+    template.remove();
+})();
+</script>

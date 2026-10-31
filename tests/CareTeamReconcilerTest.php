@@ -54,6 +54,18 @@ final class CareTeamReconcilerTest extends TestCase
         self::assertSame([], $plan->removeModuleUserIds);
     }
 
+    public function testTeamToPatientRespectsPerPatientExclusions(): void
+    {
+        $plan = $this->reconciler->planTeamToPatient(
+            teamMemberUserIds: [10, 20],
+            careTeamUserIds: [10],
+            moduleTrackedUserIds: [10],
+            excludedUserIds: [20],
+        );
+        self::assertSame([], $plan->ensureUserIds);
+        self::assertSame([], $plan->removeModuleUserIds);
+    }
+
     public function testPatientToTeamAddsUsersNotOnProviderTeam(): void
     {
         $plan = $this->reconciler->planPatientToTeam(

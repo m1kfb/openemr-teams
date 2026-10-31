@@ -10,6 +10,7 @@ declare(strict_types=1);
 
 namespace OpenEMR\Modules\ProviderTeams;
 
+use OpenEMR\Events\PatientDemographics\RenderEvent as PatientDemographicsRenderEvent;
 use OpenEMR\Menu\MenuEvent;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
@@ -26,6 +27,19 @@ final class Bootstrap
     {
         (new AclRegistrar())->ensure();
         $this->eventDispatcher->addListener(MenuEvent::MENU_UPDATE, [$this, 'addMenu']);
+        $this->eventDispatcher->addListener(
+            PatientDemographicsRenderEvent::EVENT_RENDER_POST_PAGELOAD,
+            [$this, 'renderCareTeamExclusionPanel']
+        );
+    }
+
+    public function renderCareTeamExclusionPanel(PatientDemographicsRenderEvent $event): void
+    {
+        $pid = (int) $event->getPid();
+        if ($pid <= 0) {
+            return;
+        }
+        echo Module::patientCareTeamExclusionUi()->render($pid);
     }
 
     public function addMenu(MenuEvent $event): MenuEvent

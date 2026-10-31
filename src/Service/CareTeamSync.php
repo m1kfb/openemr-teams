@@ -45,7 +45,12 @@ final class CareTeamSync
         CareTeamSyncGuard::runTeamToPatient(function () use ($teamId): void {
             $memberIds = $this->teams->activeMemberIds($teamId);
             foreach ($this->teams->activePatientIds($teamId) as $pid) {
-                $this->applyTeamToPatient($teamId, $pid, $memberIds);
+                try {
+                    $this->applyTeamToPatient($teamId, $pid, $memberIds);
+                } catch (\Throwable $exception) {
+                    error_log('Provider Teams: care team sync failed for pid '
+                        . $pid . ' on team ' . $teamId . ': ' . $exception->getMessage());
+                }
             }
         });
     }
@@ -72,12 +77,36 @@ final class CareTeamSync
             return;
         }
         CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid): void {
-            $tracked = $this->links->trackedUserIds($teamId, $pid);
-            if ($tracked === []) {
-                return;
-            }
-            $this->careTeams->applyUserChanges($pid, [], $tracked);
-            $this->links->forgetAllForPatientTeam($teamId, $pid);
+            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid): void {
+                $tracked = $this->links->activeTrackedUserIds($teamId, $pid);
+                if ($tracked === []) {
+                    return;
+                }
+                $this->careTeams->applyUserChanges($pid, [], $tracked);
+                $this->links->forgetAllForPatientTeam($teamId, $pid);
+            });
+        });
+    }
+
+    /**
+     * Clear a per-patient exclusion and add the provider-team member back to the care team.
+     */
+    public function restoreExcludedMember(int $teamId, int $pid, int $userId): void
+    {
+        if (!$this->careTeams->isSupported()) {
+            return;
+        }
+        if ($userId <= 0 || !$this->links->isExcluded($teamId, $pid, $userId)) {
+            return;
+        }
+        if (!in_array($userId, $this->teams->activeMemberIds($teamId), true)) {
+            return;
+        }
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $pid, $userId): void {
+            $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $userId): void {
+                $this->links->clearExclusion($teamId, $pid, $userId);
+                $this->applyTeamToPatientLocked($teamId, $pid, $this->teams->activeMemberIds($teamId));
+            });
         });
     }
 
@@ -101,7 +130,7 @@ final class CareTeamSync
         $summary = CareTeamSyncGuard::runPatientToTeam(function () use ($pid, $teamId, $teamName): array {
             $patientUsers = $this->careTeams->activeUserIdsForPatient($pid);
             $teamMembers = $this->teams->activeMemberIds($teamId);
-            $moduleLinked = $this->links->trackedUserIds($teamId, $pid);
+            $moduleLinked = $this->links->activeTrackedUserIds($teamId, $pid);
 
             $plan = $this->reconciler->planPatientToTeam($patientUsers, $teamMembers, $moduleLinked);
 
@@ -131,9 +160,22 @@ final class CareTeamSync
      */
     private function applyTeamToPatient(int $teamId, int $pid, array $teamMemberUserIds): void
     {
+        $this->links->withPatientTeamLock($teamId, $pid, function () use ($teamId, $pid, $teamMemberUserIds): void {
+            $this->applyTeamToPatientLocked($teamId, $pid, $teamMemberUserIds);
+        });
+    }
+
+    /**
+     * @param list<int> $teamMemberUserIds
+     */
+    private function applyTeamToPatientLocked(int $teamId, int $pid, array $teamMemberUserIds): void
+    {
         $careUsers = $this->careTeams->activeUserIdsForPatient($pid);
-        $tracked = $this->links->trackedUserIds($teamId, $pid);
-        $plan = $this->reconciler->planTeamToPatient($teamMemberUserIds, $careUsers, $tracked);
+        $this->links->recordManualRemovals($teamId, $pid, $careUsers, $teamMemberUserIds);
+
+        $tracked = $this->links->activeTrackedUserIds($teamId, $pid);
+        $excluded = $this->links->excludedUserIds($teamId, $pid);
+        $plan = $this->reconciler->planTeamToPatient($teamMemberUserIds, $careUsers, $tracked, $excluded);
 
         if ($plan->ensureUserIds === [] && $plan->removeModuleUserIds === []) {
             return;
@@ -151,5 +193,17 @@ final class CareTeamSync
                 $this->links->remember($teamId, $pid, $userId, $memberId);
             }
         }
+    }
+
+    /**
+     * @return list<array{user_id: int, name: string, username: string}>
+     */
+    public function excludedMembersForPatient(int $pid): array
+    {
+        $assignment = $this->teams->activeTeamForPatient($pid);
+        if ($assignment === null) {
+            return [];
+        }
+        return $this->links->excludedMembers((int) $assignment['team_id'], $pid);
     }
 }
