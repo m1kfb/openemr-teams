@@ -13,6 +13,7 @@ use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamBridge;
 use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamLinkStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 use OpenEMR\Modules\ProviderTeams\Service\CareTeamSync;
+use OpenEMR\Modules\ProviderTeams\Service\CareTeamSyncFailureMessage;
 use PHPUnit\Framework\TestCase;
 
 final class CareTeamSyncTest extends TestCase
@@ -137,6 +138,9 @@ final class CareTeamSyncTest extends TestCase
         self::assertSame(1, $result->succeeded);
         self::assertCount(1, $result->failed);
         self::assertSame(2, $result->failed[0]['pid']);
-        self::assertSame('save failed for pid 2', $result->failed[0]['reason']);
+        self::assertSame(
+            CareTeamSyncFailureMessage::forPatient(1, 2, new \RuntimeException('save failed for pid 2')),
+            $result->failed[0]['reason']
+        );
     }
 }

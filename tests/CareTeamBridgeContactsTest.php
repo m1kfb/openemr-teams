@@ -13,23 +13,66 @@ use PHPUnit\Framework\TestCase;
 
 final class CareTeamBridgeContactsTest extends TestCase
 {
-    public function testMemberPayloadRetainsContactFields(): void
+    public function testApplyUserChangesKeepsContactMembersWhenRemovingUsers(): void
     {
-        $bridge = new CareTeamBridge();
-        $method = new \ReflectionMethod(CareTeamBridge::class, 'memberPayload');
-        $method->setAccessible(true);
-        $payload = $method->invoke($bridge, [
-            'user_id' => null,
-            'contact_id' => 42,
-            'role' => 'family',
-            'facility_id' => null,
-            'provider_since' => '2020-01-01',
-            'status' => 'active',
-            'note' => 'related',
-        ]);
-        self::assertSame(42, $payload['contact_id']);
-        self::assertNull($payload['user_id']);
-        self::assertSame('family', $payload['role']);
-        self::assertSame('related', $payload['note']);
+        $bridge = new class extends CareTeamBridge {
+            /** @var list<array<string, mixed>> */
+            public array $savedPayload = [];
+
+            protected function detectModernSchema(): bool
+            {
+                return true;
+            }
+
+            /**
+             * @return array<string, mixed>
+             */
+            protected function fetchCareTeamData(int $pid): array
+            {
+                return [
+                    'team_id' => 1,
+                    'team_name' => 'Care Team',
+                    'team_status' => 'active',
+                    'members' => [
+                        [
+                            'member_type' => 'user',
+                            'user_id' => 10,
+                            'contact_id' => null,
+                            'role' => 'healthcare_professional',
+                            'status' => 'active',
+                            'note' => '',
+                        ],
+                        [
+                            'member_type' => 'contact',
+                            'user_id' => null,
+                            'contact_id' => 42,
+                            'role' => 'family',
+                            'status' => 'active',
+                            'note' => 'related',
+                        ],
+                    ],
+                ];
+            }
+
+            /**
+             * @param list<array<string, mixed>> $payload
+             */
+            protected function saveCareTeamPayload(
+                int $pid,
+                ?int $teamId,
+                string $teamName,
+                array $payload,
+                string $teamStatus,
+            ): void {
+                $this->savedPayload = $payload;
+            }
+        };
+
+        $bridge->applyUserChanges(5, [], [10]);
+
+        self::assertCount(1, $bridge->savedPayload);
+        self::assertSame(42, $bridge->savedPayload[0]['contact_id']);
+        self::assertSame('family', $bridge->savedPayload[0]['role']);
+        self::assertSame('related', $bridge->savedPayload[0]['note']);
     }
 }

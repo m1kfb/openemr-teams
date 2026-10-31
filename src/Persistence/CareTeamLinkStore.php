@@ -196,6 +196,18 @@ class CareTeamLinkStore
         );
     }
 
+    public function forgetActiveLinksForPatientTeam(int $providerTeamId, int $pid): void
+    {
+        QueryUtils::sqlStatementThrowException(
+            'DELETE FROM provider_team_care_team_links
+             WHERE provider_team_id = ? AND pid = ? AND excluded = 0',
+            [$providerTeamId, $pid]
+        );
+    }
+
+    /**
+     * @deprecated Prefer forgetActiveLinksForPatientTeam() so per-patient exclusions survive cleanup.
+     */
     public function forgetAllForPatientTeam(int $providerTeamId, int $pid): void
     {
         QueryUtils::sqlStatementThrowException(

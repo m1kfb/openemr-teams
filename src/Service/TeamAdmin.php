@@ -65,7 +65,7 @@ final class TeamAdmin
         return $this->teams->create($name, $notes, $active);
     }
 
-    public function update(int $teamId, string $name, string $notes, bool $active): void
+    public function update(int $teamId, string $name, string $notes, bool $active): ?CareTeamSyncBatchResult
     {
         $existing = $this->teams->find($teamId);
         if ($existing === null) {
@@ -79,8 +79,9 @@ final class TeamAdmin
         $wasActive = (int) $existing['active'] === 1;
         $this->teams->update($teamId, $name, $notes, $active);
         if ($wasActive && !$active) {
-            $this->careTeamSync->clearModuleCareTeamForAllPatients($teamId);
+            return $this->careTeamSync->clearModuleCareTeamForAllPatients($teamId);
         }
+        return null;
     }
 
     public function addMember(int $teamId, int $userId): void
@@ -150,14 +151,7 @@ final class TeamAdmin
     {
         $this->requireTeam($teamId);
         $clean = [];
-        foreach ($patientIds as $patientId) {
-            if (!is_scalar($patientId)) {
-                continue;
-            }
-            $pid = (int) $patientId;
-            if ($pid <= 0) {
-                continue;
-            }
+        foreach ($this->parseStrictPatientIds($patientIds) as $pid) {
             $assignment = $this->teams->activeTeamForPatient($pid);
             if ($assignment === null || (int) $assignment['team_id'] !== $teamId) {
                 continue;
@@ -245,5 +239,29 @@ final class TeamAdmin
             throw new TeamRuleException('Notes must be 2000 characters or fewer.');
         }
         return $notes;
+    }
+
+    /**
+     * @param list<int|string> $patientIds
+     * @return list<int>
+     */
+    private function parseStrictPatientIds(array $patientIds): array
+    {
+        $clean = [];
+        foreach ($patientIds as $patientId) {
+            if (!is_scalar($patientId)) {
+                continue;
+            }
+            $raw = trim((string) $patientId);
+            if ($raw === '' || !ctype_digit($raw)) {
+                continue;
+            }
+            $pid = (int) $raw;
+            if ($pid <= 0) {
+                continue;
+            }
+            $clean[$pid] = $pid;
+        }
+        return array_values($clean);
     }
 }

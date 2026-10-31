@@ -57,12 +57,15 @@ final class TeamController
                     );
                     return $this->redirect($teamId, 'created');
                 case 'update':
-                    $this->admin->update(
+                    $batch = $this->admin->update(
                         $teamId,
                         $this->text($post['name'] ?? ''),
                         $this->text($post['notes'] ?? ''),
                         isset($post['active'])
                     );
+                    if ($batch !== null && !$batch->isFullSuccess()) {
+                        $this->storeSyncFlash($teamId, $batch, false);
+                    }
                     return $this->redirect($teamId, 'updated');
                 case 'add_member':
                     $this->admin->addMember($teamId, $this->int($post['user_id'] ?? 0));

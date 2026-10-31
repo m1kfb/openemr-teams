@@ -30,8 +30,7 @@ class CareTeamBridge
         if (!$this->detectModernSchema()) {
             return [];
         }
-        $service = new CareTeamService();
-        $data = $service->getCareTeamData($pid);
+        $data = $this->fetchCareTeamData($pid);
         $ids = [];
         foreach ($data['members'] ?? [] as $member) {
             if (($member['member_type'] ?? 'user') !== 'user') {
@@ -59,8 +58,7 @@ class CareTeamBridge
         if (!$this->detectModernSchema()) {
             return [];
         }
-        $service = new CareTeamService();
-        $data = $service->getCareTeamData($pid);
+        $data = $this->fetchCareTeamData($pid);
         $ids = [];
         foreach ($data['members'] ?? [] as $member) {
             if (($member['member_type'] ?? 'user') !== 'user') {
@@ -91,8 +89,7 @@ class CareTeamBridge
 
         $ensureUserIds = $this->filterActiveUsers($ensureUserIds);
 
-        $service = new CareTeamService();
-        $data = $service->getCareTeamData($pid);
+        $data = $this->fetchCareTeamData($pid);
         $teamId = isset($data['team_id']) ? (int) $data['team_id'] : null;
         $teamName = (string) ($data['team_name'] ?? '');
         if ($teamName === '') {
@@ -142,7 +139,7 @@ class CareTeamBridge
             }
         }
 
-        $service->saveCareTeam($pid, $teamId ?: null, $teamName, $payload, $teamStatus);
+        $this->saveCareTeamPayload($pid, $teamId ?: null, $teamName, $payload, $teamStatus);
     }
 
     public function findMemberId(int $pid, int $userId): ?int
@@ -165,7 +162,30 @@ class CareTeamBridge
         return (int) $row['id'];
     }
 
-    private function detectModernSchema(): bool
+    /**
+     * @return array<string, mixed>
+     */
+    protected function fetchCareTeamData(int $pid): array
+    {
+        $service = new CareTeamService();
+        return $service->getCareTeamData($pid);
+    }
+
+    /**
+     * @param list<array<string, mixed>> $payload
+     */
+    protected function saveCareTeamPayload(
+        int $pid,
+        ?int $teamId,
+        string $teamName,
+        array $payload,
+        string $teamStatus,
+    ): void {
+        $service = new CareTeamService();
+        $service->saveCareTeam($pid, $teamId, $teamName, $payload, $teamStatus);
+    }
+
+    protected function detectModernSchema(): bool
     {
         if ($this->modernSchema !== null) {
             return $this->modernSchema;
@@ -186,7 +206,7 @@ class CareTeamBridge
      * @param array<string, mixed> $member
      * @return array<string, mixed>
      */
-    private function memberPayload(array $member): array
+    protected function memberPayload(array $member): array
     {
         return [
             'user_id' => $member['user_id'] ?? null,

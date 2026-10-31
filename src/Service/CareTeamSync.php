@@ -16,7 +16,7 @@ use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamBridge;
 use OpenEMR\Modules\ProviderTeams\Persistence\CareTeamLinkStore;
 use OpenEMR\Modules\ProviderTeams\Persistence\TeamStore;
 
-final class CareTeamSync
+class CareTeamSync
 {
     public function __construct(
         private readonly TeamStore $teams = new TeamStore(),
@@ -68,14 +68,12 @@ final class CareTeamSync
                     $this->applyTeamToPatient($teamId, $pid, $memberIds);
                     ++$succeeded;
                 } catch (\Throwable $exception) {
-                    error_log('Provider Teams: care team sync failed for pid '
-                        . $pid . ' on team ' . $teamId . ': ' . $exception->getMessage());
                     $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
                     $failed[] = [
                         'pid' => $pid,
                         'name' => $label['name'],
                         'pubpid' => $label['pubpid'],
-                        'reason' => $exception->getMessage(),
+                        'reason' => CareTeamSyncFailureMessage::forPatient($teamId, $pid, $exception),
                     ];
                 }
             }
@@ -112,7 +110,7 @@ final class CareTeamSync
                     return;
                 }
                 $this->careTeams->applyUserChanges($pid, [], $tracked);
-                $this->links->forgetAllForPatientTeam($teamId, $pid);
+                $this->links->forgetActiveLinksForPatientTeam($teamId, $pid);
             });
         });
     }
@@ -120,11 +118,39 @@ final class CareTeamSync
     /**
      * Clear module-added care-team members for every patient still assigned to a team.
      */
-    public function clearModuleCareTeamForAllPatients(int $teamId): void
+    public function clearModuleCareTeamForAllPatients(int $teamId): CareTeamSyncBatchResult
     {
-        foreach ($this->teams->activePatientIds($teamId) as $pid) {
-            $this->clearModuleCareTeamForPatient($teamId, $pid);
+        if (!$this->careTeams->isSupported()) {
+            return new CareTeamSyncBatchResult(0, 0, []);
         }
+
+        $patientIds = $this->teams->activePatientIds($teamId);
+        if ($patientIds === []) {
+            return new CareTeamSyncBatchResult(0, 0, []);
+        }
+
+        $labels = $this->patientLabelsByPid($teamId);
+        $failed = [];
+        $succeeded = 0;
+
+        CareTeamSyncGuard::runTeamToPatient(function () use ($teamId, $patientIds, $labels, &$failed, &$succeeded): void {
+            foreach ($patientIds as $pid) {
+                try {
+                    $this->clearModuleCareTeamForPatient($teamId, $pid);
+                    ++$succeeded;
+                } catch (\Throwable $exception) {
+                    $label = $labels[$pid] ?? $this->teams->patientDisplay($pid);
+                    $failed[] = [
+                        'pid' => $pid,
+                        'name' => $label['name'],
+                        'pubpid' => $label['pubpid'],
+                        'reason' => CareTeamSyncFailureMessage::forPatient($teamId, $pid, $exception),
+                    ];
+                }
+            }
+        });
+
+        return new CareTeamSyncBatchResult(count($patientIds), $succeeded, $failed);
     }
 
     /**
